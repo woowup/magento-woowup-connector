@@ -1,0 +1,13 @@
+{
+   "name": "woowup/vtex-woowup-connector",
+   "description": "VTEX <> WoowUp Connector",
+   "require": {
+       "woowup/woowup-php-client": "dev-master",
+      "monolog/monolog": "^1.24"
+   },
+   "autoload": {
+       "psr-4": {
+           "WoowUpConnectors\\": "src/"
+       }
+   }
+}
