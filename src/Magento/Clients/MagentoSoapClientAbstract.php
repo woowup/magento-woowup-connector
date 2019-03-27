@@ -1,12 +1,6 @@
 <?php
 namespace WoowUpConnectors\Magento\Clients;
 
-/**
- * Created by PhpStorm.
- * User: diego
- * Date: 21/07/16
- * Time: 08:43
- */
 abstract class MagentoSoapClientAbstract
 {
     /**

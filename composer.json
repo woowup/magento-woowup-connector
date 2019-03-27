@@ -1,8 +1,8 @@
 {
-   "name": "woowup/vtex-woowup-connector",
-   "description": "VTEX <> WoowUp Connector",
+   "name": "woowup/magento-woowup-connector",
+   "description": "Magento <> WoowUp Connector",
    "require": {
-       "woowup/woowup-php-client": "dev-master",
+      "woowup/woowup-php-client": "dev-master",
       "monolog/monolog": "^1.24"
    },
    "autoload": {

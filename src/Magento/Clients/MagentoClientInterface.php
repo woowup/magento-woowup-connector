@@ -1,10 +1,4 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: diego
- * Date: 21/07/16
- * Time: 08:44
- */
 
 namespace WoowUpConnectors\Magento\Clients;
 

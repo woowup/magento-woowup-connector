@@ -1,12 +1,6 @@
 <?php
 namespace WoowUpConnectors\Magento\Clients;
 
-/**
- * Created by PhpStorm.
- * User: diego
- * Date: 07/06/16
- * Time: 18:05
- */
 class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoClientInterface
 {
     const CONNECTION_TIMEOUT = 300; //5min
