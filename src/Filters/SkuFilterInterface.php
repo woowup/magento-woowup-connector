@@ -1,6 +1,6 @@
 <?php
 
-namespace WoowUpConnectors;
+namespace MagentoWoowUpConnector\Filters;
 
 interface SkuFilterInterface
 {

@@ -1,6 +1,6 @@
 <?php
 
-namespace WoowUpConnectors\Magento\Clients;
+namespace MagentoWoowUpConnector\Clients;
 
 interface MagentoClientInterface
 {

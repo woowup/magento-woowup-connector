@@ -1,7 +1,7 @@
 <?php
-namespace WoowUpConnectors\Magento\Clients;
+namespace MagentoWoowUpConnector\Clients;
 
-class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoClientInterface
+class MagentoSoapClientV2 extends MagentoSoapClientAbstract implements MagentoClientInterface
 {
     const CONNECTION_TIMEOUT = 300; //5min
     const ID_FIELD = 'sku';
@@ -55,7 +55,7 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
             );
 
             $context = stream_context_create($opts);
-            $this->client = new \SoapClient($this->config['host'] . "/api/soap/?wsdl", [
+            $this->client = new \SoapClient($this->config['host'] . "/api/v2_soap/?wsdl", [
                 'stream_context' => $context,
                 'cache_wsdl' => WSDL_CACHE_NONE
             ]);
@@ -78,7 +78,7 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
 
             try {
                 $customerInfo = $this->retryCall(function () use ($customerId) {
-                    return json_decode(json_encode($this->client->call($this->sessionId, 'customer.info', $customerId)));
+                    return $this->client->customerCustomerInfo($this->sessionId, $customerId);
                 });
 
                 $hasAddress = (isset($customerInfo->default_shipping) && !empty($customerInfo->default_shipping)) || (isset($customerInfo->default_billing) && !empty($customerInfo->default_billing));
@@ -96,7 +96,7 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
 
                 $this->customersInfo[$customerId] = $customerInfo;
             } catch (\SoapFault $e) {
-                $this->logger->info("error al buscar la info del customer " . $customerId . " | " . $e->getMessage());
+                \LogService::save('mg-err', "error al buscar la info del customer " . $customerId . " | " . $e->getMessage(), $e);
                 return null;
             }
         }
@@ -108,11 +108,9 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
     {
         $this->checkReconnect();
 
-        $response = $this->retryCall(function () {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_category.tree')));
+        return $this->retryCall(function () {
+            return $this->client->catalogCategoryTree($this->sessionId);
         });
-
-        return $response;
     }
 
     public function findCategory($id)
@@ -120,29 +118,7 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
         $this->checkReconnect();
 
         $response = $this->retryCall(function () use ($id) {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_category.info', $id)));
-        });
-
-        return $response;
-    }
-
-    public function findProductAditionalAttributes($setId, $type = 'simple')
-    {
-        $this->checkReconnect();
-
-        $response = $this->retryCall(function () use ($type, $setId) {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'product.listOfAdditionalAttributes', [$type, $setId])));
-        });
-
-        return $response;
-    }
-
-    public function findProductCustomOptions($id)
-    {
-        $this->checkReconnect();
-
-        $response = $this->retryCall(function () use ($id) {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'product_custom_option.list', $id)));
+            return $this->client->catalogCategoryInfo($this->sessionId, $id);
         });
 
         return $response;
@@ -152,11 +128,9 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
     {
         $this->checkReconnect();
 
-        $response = $this->retryCall(function () use ($id) {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'sales_order.info', $id)));
+        return $this->retryCall(function () use ($id) {
+            return $this->client->salesOrderInfo($this->sessionId, $id);
         });
-
-        return $response;
     }
 
     public function findProductInfo($id, $field = self::ID_FIELD)
@@ -165,16 +139,11 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
             try {
                 $this->checkReconnect();
 
-                $attributes = new \stdclass();
-                $attributes->attributes = $this->variations;
-
-                $response = $this->retryCall(function () use ($id, $field) {
-                    return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_product.info', [$id, null, null, $field])));
+                $this->productsInfo[$id] = $this->retryCall(function () use ($id, $field) {
+                    return $this->client->catalogProductInfo($this->sessionId, $id, null, null, $field);
                 });
-
-                $this->productsInfo[$id] = $response;
             } catch (\SoapFault $e) {
-                $this->logger->info("error al buscar la info del producto " . $id . " | " . $e->getMessage());
+                \LogService::save('mg-err', "error al buscar la info del producto " . $id . " | " . $e->getMessage(), $e);
                 return null;
             }
         }
@@ -186,97 +155,104 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
     {
         $this->checkReconnect();
 
-        $response = $this->retryCall(function () {
-            return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_product_attribute_set.list')));
+        return $this->retryCall(function () {
+            return $this->client->catalogProductAttributeSetList($this->sessionId);
         });
-
-        return $response;
     }
 
     public function findProductAttributes($id)
     {
         $this->checkReconnect();
 
-        $response = $this->retryCall(function () use ($id) {
-            return json_decode(json_encode($this->client->call(
-                $this->sessionId,
-                "product_attribute.list",
-                array(
-                    $id
-                )
-            )));
+        return $this->retryCall(function () use ($id) {
+            return $this->client->catalogProductAttributeList($this->sessionId, $id);
         });
-
-        return $response;
     }
 
+    public function findProductAditionalAttributes($setId, $type = 'simple')
+    {
+        $this->checkReconnect();
+
+        return $this->retryCall(function () use ($type, $setId) {
+            return $this->client->catalogProductListOfAdditionalAttributes($this->sessionId, $type, $setId);
+        });
+    }
+
+    public function findProductCustomOptions($id)
+    {
+        $this->checkReconnect();
+
+        return $this->retryCall(function () use ($id) {
+            return $this->client->catalogProductCustomOptionList($this->sessionId, $id);
+        });
+    }
 
     public function findOrders($from, $to)
     {
         $this->checkReconnect();
-        // possible statuses: pending, processing, complete, cancelled, closed, onhold
 
         $storeId = isset($this->config['store_id']) && !empty($this->config['store_id']) ? $this->config['store_id'] : null;
-        $statuses = isset($this->config['status']) && !empty($this->config['status']) ? $this->config['status'] : null;
 
-        $response = $this->retryCall(function () use ($from, $to, $storeId, $statuses) {
+        return $this->retryCall(function () use ($from, $to, $storeId) {
+            // possible statuses: pending, processing, complete, cancelled, closed, onhold
             $filter = [];
 
             if ($storeId) {
-                $filter['store_id'] = ['=' => $storeId];
-            }
-
-            if ($statuses) {
-                $filter['status'] = ['in' => $statuses];
+                $filter['filter'] = [
+                    ['key' => 'store_id', 'value' => $storeId]
+                ];
             }
 
             $filter += [
-                'created_at' => ['gteq' => $from],
-                'CREATED_AT' => ['lteq' => $to]
+                'complex_filter' => array(
+                    array(
+                        'key' => 'created_at',
+                        'value' => array('key' => 'from', 'value' => $from)
+                    ),
+                    array(
+                        'key' => 'CREATED_AT',
+                        'value' => array('key' => 'to', 'value' => $to)
+                    ),
+                )
             ];
 
-            return json_decode(json_encode($this->client->call($this->sessionId, 'order.list', [$filter])));
+            return $this->client->salesOrderList($this->sessionId, $filter);
         });
-
-        return $response;
     }
 
     public function findCustomers($from, $to = null, $new = false)
     {
+        $this->checkReconnect();
+        $storeId = isset($this->config['store_id']) && !empty($this->config['store_id']) ? $this->config['store_id'] : null;
 
-        try {
-            $this->checkReconnect();
+        return $this->retryCall(function () use ($from, $to, $new, $storeId) {
             $field = $new ? 'created_at' : 'updated_at';
-            $storeId = isset($this->config['store_id']) && !empty($this->config['store_id']) ? $this->config['store_id'] : null;
 
             $filter = [
-                'complex_filter' => []
+                'complex_filter' => [
+                    [
+                        'key' => $field,
+                        'value' => ['key' => 'from', 'value' => $from]
+                    ]
+                ]
             ];
 
-            if ($from) {
-                $filter['complex_filter'][$field] = [
-                    'from' => $from
-                ];
-            }
-
-            if ($to) {
-                $filter['complex_filter'][$field] = [
-                    'to' => $to
+            if (!is_null($to)) {
+                $filter['complex_filter'][] = [
+                    'key' => strtoupper($field),
+                    'value' => ['key' => 'to', 'value' => $to]
                 ];
             }
 
             if ($storeId) {
-                $filter['store_id'] = ['=' => $storeId];
+                $filter['complex_filter'][] = [
+                    'key' => 'store_id',
+                    'value' => array('key' => '=', 'value' => $storeId)
+                ];
             }
 
-            $response = $this->retryCall(function () use ($filter) {
-                return json_decode(json_encode($this->client->call($this->sessionId, 'customer.list', $filter)));
-            });
-
-            return $response;
-        } catch (\SoapFault $e) {
-            throw new \Exception("error al buscar el listado de clientes | " . $e->getMessage(), 1);
-        }
+            return $this->client->customerCustomerList($this->sessionId, $filter);
+        });
     }
 
     /**
@@ -289,26 +265,28 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
         try {
             $this->checkReconnect();
 
-            $filter = [
-                'updated_at' => ['gteq' => $from],
-                'UPDATED_AT' => ['lteq' => $to]
-            ];
+            $filter = array(
+                'complex_filter' => array(
+                    array(
+                        'key' => 'UPDATED_AT',
+                        'value' => array('key' => 'from', 'value' => $from)
+                    ),
+                    array(
+                        'key' => 'updated_at',
+                        'value' => array('key' => 'to', 'value' => $to)
+                    )
+                )
+            );
 
             $storeId = isset($this->config['store_id']) && !empty($this->config['store_id']) ? $this->config['store_id'] : null;
 
             $response = $this->retryCall(function () use ($filter, $storeId) {
-                $parameters = ['filters' => $filter];
-
-                if ($storeId) {
-                    $parameters['store_id'] = $storeId;
-                }
-
-                return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_product.list', $parameters)));
+                return $this->client->catalogProductList($this->sessionId, $filter, $storeId);
             });
 
             return $response;
         } catch (\SoapFault $e) {
-            $this->logger->info("error al buscar la info del listado de productos | " . $e->getMessage());
+            \LogService::save('mg-err', "error al buscar las tiendas | " . $e->getMessage(), $e);
             return null;
         }
     }
@@ -319,12 +297,12 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
             $this->checkReconnect();
 
             $response = $this->retryCall(function () use ($id) {
-                return json_decode(json_encode($this->client->call($this->sessionId, 'cataloginventory_stock_item.list', $id)));
+                return $this->client->catalogInventoryStockItemList($this->sessionId, [$id]);
             });
 
             return $response;
         } catch (\SoapFault $e) {
-            $this->logger->info("error al buscar stock para el producto #{$id} | " . $e->getMessage());
+            \LogService::save('mg-err', "error al buscar stock para el producto sku #{$id} | " . $e->getMessage(), $e);
             return null;
         }
     }
@@ -335,12 +313,12 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
             $this->checkReconnect();
 
             $response = $this->retryCall(function () use ($id) {
-                return json_decode(json_encode($this->client->call($this->sessionId, 'catalog_product_attribute_media.list', [$id, null, self::ID_FIELD])));
+                return $this->client->catalogProductAttributeMediaList($this->sessionId, $id, null, self::ID_FIELD);
             });
 
             return $response;
         } catch (\SoapFault $e) {
-            $this->logger->info("error al buscar imagenes para el producto #{$id} | " . $e->getMessage());
+            \LogService::save('mg-err', "error al buscar imagenes para el producto sku #{$id} | " . $e->getMessage(), $e);
             return null;
         }
     }
@@ -351,12 +329,12 @@ class MagentoSoapClientV1 extends MagentoSoapClientAbstract implements MagentoCl
             $this->checkReconnect();
 
             $response = $this->retryCall(function () {
-                return json_decode(json_encode($this->client->call($this->sessionId, 'store.list')));
+                return $this->client->storeList($this->sessionId);
             });
 
             return $response;
         } catch (\SoapFault $e) {
-            $this->logger->info("error al buscar las tiendas | " . $e->getMessage());
+            \LogService::save('mg-err', "error al buscar las tiendas | " . $e->getMessage(), $e);
             return null;
         }
     }

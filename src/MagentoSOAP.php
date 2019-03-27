@@ -1,11 +1,11 @@
 <?php
 
-namespace WoowUpConnectors\Magento;
+namespace MagentoWoowUpConnector;
 
 use Psr;
-use WoowUpConnectors\Magento\Clients\MagentoSoapClientV1;
-use WoowUpConnectors\Magento\Clients\MagentoSoapClientV2;
-use WoowUpConnectors\WoowUpHelper;
+use MagentoWoowUpConnector\Clients\MagentoSoapClientV1;
+use MagentoWoowUpConnector\Clients\MagentoSoapClientV2;
+use MagentoWoowUpConnector\WoowUpHelper;
 
 class MagentoSOAP
 {

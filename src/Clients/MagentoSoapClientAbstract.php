@@ -1,5 +1,5 @@
 <?php
-namespace WoowUpConnectors\Magento\Clients;
+namespace MagentoWoowUpConnector\Clients;
 
 abstract class MagentoSoapClientAbstract
 {
