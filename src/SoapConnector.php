@@ -56,25 +56,6 @@ class SoapConnector
         $this->woowup = new WoowUpHelper($woowupClient, $logger);
     }
 
-    protected function getApiClient()
-    {
-        if (!isset($this->config['version'])) {
-            throw new \Exception("Undefined magento api version");
-        }
-
-        switch ($this->config['version']) {
-            case 1:
-                return new SoapClientV1($this->config);
-                break;
-            case 2:
-                return new SoapClientV2($this->config);
-                break;
-            default:
-                throw new Exception("Unknown magento api version: ".$this->config['version']);
-                break;
-        }
-    }
-
     public function importCustomers($days = 5)
     {
         $this->logger->info("Importing customers from $days days");
@@ -148,120 +129,37 @@ class SoapConnector
         $this->logger->info("Failed orders: " . count($stats['orders']['failed']));
     }
 
-    public function setStore($storeId)
+    public function getCustomers($from, $to = null, $new = false)
     {
-        $this->config['store_id'] = $storeId;
-        $this->client->setStore($storeId);
-    }
-
-    public function getStore()
-    {
-        return isset($this->config['store_id']) ? $this->config['store_id'] : null;
-    }
-
-    public function getClient()
-    {
-        return $this->client;
-    }
-
-    public function getServiceUidField($customer = null, $order = null)
-    {
-        $serviceUid = null;
-         $serviceUidField = isset($this->config['service_uid_field']) && !empty($this->config['service_uid_field']) ? $this->config['service_uid_field'] : self::SERVICEUID_FIELD;
-
-        // encuentro el service_uid. Default: order.customer_email
-        // por ejemplo en arredo es: customer.dni
-        // por ejemplo en ELG screen para el dni: order.customer_cpf
-        if ($serviceUidField) {
-            if ($order && preg_match("/^order./", $serviceUidField)) {
-                $name = str_replace("order.", "", $serviceUidField);
-
-                if (isset($order->{$name})) {
-                    $serviceUid = $order->{$name};
-                }
-            } elseif ($customer && preg_match("/^customer./", $serviceUidField) && $customer) {
-                $name = str_replace("customer.", "", $serviceUidField);
-
-                if (isset($customer->{$name})) {
-                    $serviceUid = $customer->{$name};
+        if (is_null($to)) {
+            $this->logger->info("Getting customers from $from");
+            foreach ($this->client->findCustomers($from . " 00:00:00", null, $new) as $magentoCustomer) {
+                $magentoCustomer = $this->getCustomerInfo($magentoCustomer->customer_id);
+                if (($customer = $this->buildCustomer($magentoCustomer)) !== null) {
+                    yield $customer;
                 }
             }
-        }
+        } else {
+            $this->logger->info("Getting customers from $from to $to");
+            $i = 0;
+            $date = date('Y-m-d', time() - 60 * 60 * 24 * $i);
 
-        // limpieza de service_uid
-        if ($serviceUid) {
-            if (strpos($serviceUid, '@') === false) {
-                $serviceUid = str_replace([".", "-", "_", " "], "", trim($serviceUid));
+            while ($date >= substr($from, 0, 10)) {
+                if (is_null($to) || $date <= substr($to, 0, 10)) {
+                    $magentoCustomers = $this->client->findCustomers($date . " 00:00:00", $date . " 23:59:59", $new);
+                    if (!is_null($magentoCustomers) && is_array($magentoCustomers)) {
+                        foreach ($magentoCustomers as $magentoCustomer) {
+                            if (($customer = $this->buildCustomer($magentoCustomer)) !== null) {
+                                yield $customer;
+                            }
+                        }
+                    }
+                }
+
+                $i++;
+                $date = date('Y-m-d', time() - 60 * 60 * 24 * $i);
             }
         }
-
-        return $serviceUid;
-    }
-
-    /**
-     * Función estática para devolver todos los contest habilitados ...
-     */
-    public static function allContest()
-    {
-        foreach (Connection::model()->findAll(['condition' => 'mg_enabled=1']) as $conn) {
-            yield  $conn->contest;
-        }
-    }
-
-    public function getCategories()
-    {
-        $categories = $this->client->findCategories();
-
-        return (isset($categories->children)) ? $this->buildCategoryTree($categories->children) : [];
-    }
-
-    public function getCategoryInfo($categoryId)
-    {
-        return $this->client->findCategory($categoryId);
-    }
-
-    public function getCustomerInfo($customerId)
-    {
-        $this->logger->info("Getting info for customer $customerId");
-        return $this->client->getCustomerInfo($customerId);
-    }
-
-    public function findProductAditionalAttributes($setId, $type = 'simple')
-    {
-        return $this->client->findProductAditionalAttributes($setId, $type);
-    }
-
-    public function getProductTypes()
-    {
-        return isset($this->config['product_types']) ? $this->config['product_types'] : [];
-    }
-
-    public function getContestId()
-    {
-        return isset($this->config['contest_id']) ? $this->config['contest_id'] : null;
-    }
-
-    protected function buildCategoryTree($categories)
-    {
-        $tree = [];
-
-        foreach ($categories as $category) {
-            echo "Buscando informacion de categoria {$category->name}\n";
-            $info = $this->getCategoryInfo($category->category_id);
-
-            $tree[] = new CategoryConectorModel(
-                $category->category_id,
-                $category->name,
-                isset($category->children) && !empty($category->children) ?
-                $this->buildCategoryTree($category->children) : [],
-                !empty($info) && isset($info->path) && !empty($info->path) ? $info->path : "",
-                !empty($info) && isset($info->url_path) && !empty($info->url_path) && isset($this->config['host']) ? ($this->config['host']."/".$info->url_path) : null,
-                null, #imagen
-                !empty($info) && isset($info->url_key) && !empty($info->url_key) ? $info->url_key : null
-            );
-        }
-
-        return $tree;
     }
 
     public function getOrders($fromDate, $toDate = null, $importing = false)
@@ -308,36 +206,13 @@ class SoapConnector
         $this->logger->info("Ventas descargadas por estado: ".json_encode($groupByStatus));
     }
 
-    public function getOrder($id)
+    protected function getCustomerInfo($customerId)
     {
-        return $this->buildOrderInfo($this->client->findOrderInfo($id));
+        $this->logger->info("Getting info for customer $customerId");
+        return $this->client->getCustomerInfo($customerId);
     }
 
-    public function getOrdersWithoutBuild($fromDate, $toDate = null, $allStatus = false)
-    {
-        $i = 0;
-        $groupByStatus = [];
-        $date = date('Y-m-d', strtotime($fromDate));
-        $toDate = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
-
-        echo "Buscando desde {$date} al {$toDate}\n";
-
-        while ($date <= $toDate) {
-            $orders = $this->client->findOrders($date . " 00:00:00", $date . " 23:59:59");
-
-            echo "Cantidad de ventas en el día {$date}: " . count($orders) . "\n";
-
-            foreach ($orders as $order) {
-                if (($allStatus || in_array($order->status, $this->config['status'])) && (empty($this->config['store_id']) || $order->store_id == $this->config['store_id'])) {
-                    yield $order;
-                }
-            }
-
-            $date = date('Y-m-d', strtotime($date . " +1 day"));
-        }
-    }
-
-    public function buildOrder($magentoOrder, $importing = false)
+    protected function buildOrder($magentoOrder, $importing = false)
     {
         $this->logger->info("Building order " . $magentoOrder->increment_id);
         $order = [];
@@ -457,176 +332,235 @@ class SoapConnector
         return $order;
     }
 
-    public function buildOrderInfo($orderInfo)
-    {
-        $customer = null;
-        $serviceUid = null;
-
-        if (isset($orderInfo->customer_id)) {
-            $customer = $this->client->getCustomerInfo($orderInfo->customer_id);
-        }
-
-        $serviceUid = $this->getServiceUidField($customer, $orderInfo);
-
-        $o = new OrderConectorModel();
-        $c = new CustomerConectorModel();
-
-        foreach ($orderInfo->items as $item) {
-            $product = $this->client->findProductInfo($item->sku);
-
-            $categoryId = null;
-            $categoryPath = null;
-            $categories = [];
-            $productUrl = null;
-            $productThumbnail = null;
-            $productPicture = null;
-
-            if (!is_null($product) && isset($product->category_ids) && count($product->category_ids) > 0) {
-                $categories = $product->category_ids;
-                $categoryId = $product->category_ids[0];
-                $categoryPath = ProductCategoryService::buildCategoryPath(
-                    $this->config['contest_id'],
-                    $categoryId
-                );
-            }
-
-            $o->addInvoiceLine(
-                $item->sku,
-                $item->name,
-                (int)$item->qty_ordered,
-                $item->price,
-                $categoryId,
-                $categoryPath,
-                null, //$variations,
-                $productUrl,
-                $productThumbnail,
-                $productPicture,
-                $categories
-            );
-        }
-
-
-        $email = $orderInfo->customer_email;
-        $document = $customer && isset($customer->dni) && !empty(trim($customer->dni)) ? trim($customer->dni) : null;
-
-        if ($serviceUid == $email || $serviceUid == $document) {
-            $serviceUid = null;
-        }
-
-        $c->setUid($serviceUid);
-        $c->setEmail($orderInfo->customer_email);
-        $c->setDocument($document);
-        $c->setName($orderInfo->customer_firstname);
-        $c->setLastName($orderInfo->customer_lastname);
-        $c->setState($customer && isset($customer->region) ? $customer->region : null);
-        $c->setStreet($customer && isset($customer->street) ? $customer->street : null);
-        $c->setCountry($customer && isset($customer->country_id) ? $customer->country_id : null);
-
-        if (!is_null($customer)) {
-            $c->setTags(["group" . $customer->group_id]);
-        }
-
-        if (isset($orderInfo->customer_gender)) {
-            if ($orderInfo->customer_gender == "1") {
-                $c->setGender(UserService::MALE);
-            } elseif ($orderInfo->customer_gender == "2") {
-                $c->setGender(UserService::FEMALE);
-            }
-        }
-
-        //echo $order->created_at . "\n";
-        return $o
-        ->setNumber($orderInfo->increment_id)
-        ->setTotal($orderInfo->base_subtotal - abs($orderInfo->base_discount_amount))
-        ->setGrossTotal($orderInfo->base_subtotal)
-        ->setShippingTotal($orderInfo->base_shipping_amount)
-        ->setTaxTotal($orderInfo->base_tax_amount)
-        ->setDiscountTotal(abs($orderInfo->base_discount_amount))
-        ->setDate($orderInfo->created_at)
-        ->setCustomer($c);
-    }
-
-    public function listProducts($from = null, $to = null)
-    {
-        return $this->client->listProducts($from, $to);
-    }
-
-    public function getNewCustomers($from, $to = null)
-    {
-        return $this->getCustomers($from, $to, true);
-    }
-
-    public function getCustomers($from, $to = null, $new = false)
-    {
-        if (is_null($to)) {
-            $this->logger->info("Getting customers from $from");
-            foreach ($this->client->findCustomers($from . " 00:00:00", null, $new) as $magentoCustomer) {
-                $magentoCustomer = $this->getCustomerInfo($magentoCustomer->customer_id);
-                if (($customer = $this->buildCustomer($magentoCustomer)) !== null) {
-                    yield $customer;
-                }
-            }
-        } else {
-            $this->logger->info("Getting customers from $from to $to");
-            $i = 0;
-            $date = date('Y-m-d', time() - 60 * 60 * 24 * $i);
-
-            while ($date >= substr($from, 0, 10)) {
-                if (is_null($to) || $date <= substr($to, 0, 10)) {
-                    $magentoCustomers = $this->client->findCustomers($date . " 00:00:00", $date . " 23:59:59", $new);
-                    if (!is_null($magentoCustomers) && is_array($magentoCustomers)) {
-                        foreach ($magentoCustomers as $magentoCustomer) {
-                            if (($customer = $this->buildCustomer($magentoCustomer)) !== null) {
-                                yield $customer;
-                            }
-                        }
-                    }
-                }
-
-                $i++;
-                $date = date('Y-m-d', time() - 60 * 60 * 24 * $i);
-            }
-        }
-
-        return;
-    }
-
-    public function findProductInfo($id, $field = 'sku')
-    {
-        return $this->client->findProductInfo($id, $field);
-    }
-
-    public function getStockForProduct($id)
-    {
-        return $this->client->getStockForProduct($id);
-    }
-
-    public function getMediaForProduct($id)
-    {
-        return $this->client->getMediaForProduct($id);
-    }
-
-    public function findProductAttributes($id)
-    {
-        return $this->client->findProductAttributes($id);
-    }
-
-    public function findProductAttributeSets()
-    {
-        return $this->client->findProductAttributeSets();
-    }
-
-    public function findProductCustomOptions($id)
-    {
-        return $this->client->findProductCustomOptions($id);
-    }
-
-    public function getStores()
+    protected function getStores()
     {
         return $this->client->getStores();
     }
 
-    protected function _getDescription($productInfo)
+    protected function buildCustomer($magentoCustomer)
+    {
+        // Email, first name and last name
+        $customer = [
+            'email' => mb_strtolower(trim($magentoCustomer->email)),
+            'first_name' => ucwords(mb_strtolower(trim($magentoCustomer->firstname))),
+            'last_name' => ucwords(mb_strtolower(trim($magentoCustomer->lastname))),
+            'tags' => self::CUSTOMER_TAG,
+        ];
+
+        // Document
+        if (isset($magentoCustomer->dni) && ($document = $this->validDocument($magentoCustomer->dni))) {
+            $customer['document'] = $document;
+            $customer['document_type'] = 'DNI';
+        }
+
+        // Address
+        if (isset($magentoCustomer->addressInfo) && !empty($magentoCustomer->addressInfo)) {
+            $address = $magentoCustomer->addressInfo;
+            $customer += [
+                // TO-DO convertir país de ISO2 a ISO3
+                'country' => isset($address->country_id) ? $address->country_id : null,
+                'state' => isset($address->region) ? ucwords(mb_strtolower(trim($address->region))) : null,
+                'street' => isset($address->street) ? ucwords(mb_strtolower(trim($address->street))) : null,
+                'city' => isset($address->city) ? ucwords(mb_strtolower(trim($address->city))) : null,
+                'postcode' => isset($address->postcode) ? $address->postcode : null,
+                'telephone' => isset($address->telephone) ? $address->telephone : null,
+            ];
+        }
+
+        // Birthdate
+        if (isset($magentoCustomer->dob)) {
+            $customer['birthdate'] = trim($customer->dob);
+        }
+
+        // Gender
+        if (isset($magentoCustomer->gender)) {
+            $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
+        }
+
+        // Group
+        if (isset($magentoCustomer->group_id) && !empty($magentoCustomer->group_id)) {
+            $customer['tags'] .= ",group" . $magentoCustomer->group_id;
+        }
+
+        // Clean empty values
+        foreach ($customer as $key => $value) {
+            if (empty($value)) {
+                unset($customer[$key]);
+            } elseif (is_array($value)) {
+                foreach ($value as $subKey => $subValue) {
+                    if (empty($subValue)) {
+                        unset($customer[$key][$subKey]);
+                    }
+                }
+            }
+        }
+
+        // Check if customer has email or document
+        if (empty($customer['email']) && (!isset($customer['document']) || empty($customer['document']))) {
+            $this->logger->info("Customer " . $magentoCustomer->customer_id . " has no valid document or email");
+            return null;
+        }
+
+        return $customer;
+    }
+
+    protected function validDocument($document)
+    {
+        $document = trim(str_replace([".", "-", " ", "(", ")"], "", $document));
+        return !empty($document) && preg_match("/^\d{7,}$/", $document) !== false ? $document : null;
+    }
+
+    protected function buildOrderPayment($paymentInfo)
+    {
+        $payment = [];
+        
+        if (isset($paymentInfo->payment_type_id) && !empty($paymentInfo->payment_type_id)) {
+            $payment['type'] = $this->getPaymentType($paymentInfo->payment_type_id);
+        }
+
+        if (isset($paymentInfo->payment_method) && !empty($paymentInfo->payment_method)) {
+            $payment['brand'] = ucwords(mb_strtolower(trim($paymentInfo->payment_method)));
+        }
+
+        if (isset($paymentInfo->cardTruncated) && !empty($paymentInfo->cardTruncated)) {
+            $payment['first_digits'] = substr(str_replace(' ', '', $paymentInfo->cardTruncated), 0, 6);
+        }
+
+        if (isset($paymentInfo->installments) && !empty($paymentInfo->installments)) {
+            $payment['installments'] = (int) trim($paymentInfo->installments);
+        }
+
+        if (isset($paymentInfo->total_amount) && !empty($paymentInfo->total_amount)) {
+            $payment['amount'] = (float) $paymentInfo->total_amount;
+        }
+
+        return $payment;
+    }
+
+    protected function getPaymentType($type)
+    {
+        if (strpos($type, 'mercadopago') !== false) {
+            return 'mercadopago';
+        }
+
+        if (strpos($type, 'todopago') !== false) {
+            return 'todopago';
+        }
+
+        if (strpos($type, 'credit') !== false) {
+            return 'credit';
+        }
+
+        if (strpos($type, 'debit') !== false) {
+            return 'debit';
+        }
+
+        return 'other';
+    }
+
+    protected function getApiClient()
+    {
+        if (!isset($this->config['version'])) {
+            throw new \Exception("Undefined magento api version");
+        }
+
+        switch ($this->config['version']) {
+            case 1:
+                return new SoapClientV1($this->config);
+                break;
+            case 2:
+                return new SoapClientV2($this->config);
+                break;
+            default:
+                throw new Exception("Unknown magento api version: ".$this->config['version']);
+                break;
+        }
+    }
+
+    protected function setStore($storeId)
+    {
+        $this->config['store_id'] = $storeId;
+        $this->client->setStore($storeId);
+    }
+
+    protected function getStore()
+    {
+        return isset($this->config['store_id']) ? $this->config['store_id'] : null;
+    }
+
+    protected function getClient()
+    {
+        return $this->client;
+    }
+
+    /*    public function importProductById($id, $type, $productInfo)
+    {
+        if (empty($productInfo) || empty($productInfo->sku)) {
+            echo "Producto no encontrado sku #{$id}\n";
+            return null;
+        }
+
+        if (!isset($productInfo->type_id) || $productInfo->type_id != $type) {
+            echo "Producto de tipo {$productInfo->type_id} vs {$type}\n";
+            return null;
+        }
+
+        if (!isset($productInfo->name) || empty($productInfo->name)) {
+            return null;
+        }
+
+        $specifications = null;
+        $stockQuantity = null;
+        $basename = null;
+        $stockInfo = null;
+
+        $inStock = $this->_isVisible($productInfo);
+        $isAvailable = $this->_isAvailable($productInfo);
+
+        if ($inStock && $isAvailable) {
+            $stockInfo = $this->getStockForProduct($id);
+
+            if (!empty($stockInfo)) {
+                $stockQuantity = (int) $stockInfo[0]->qty;
+                $inStock = (boolean) $stockInfo[0]->is_in_stock;
+
+                if ($inStock && $stockQuantity == 0) {
+                    // pongo el stock en 1 porque realmente hay stock pero no le ponen cantidad en algunos casos
+                    $stockQuantity = 1;
+                }
+            }
+        }
+
+        $description = $this->_getDescription($productInfo);
+        $imageUrl = $this->_getImageUrl($id, $productInfo);
+        $thumbnailUrl = $this->_getThumbnailUrl($id, $productInfo);
+        $price = isset($productInfo->price) && !is_null($productInfo->price) ? (float) $productInfo->price : null;
+        $productCategories = null;
+
+        $product = new \ProductConnectorModel($id);
+        $product
+        ->setContestId($this->config['contest_id'])
+        ->setName($productInfo->name)
+        ->setDescription($description)
+        ->setPrice($price)
+        ->setImageUrl($imageUrl)
+        ->setThumbnailUrl($thumbnailUrl)
+        ->setStock($stockQuantity)
+        ->setAvailability($inStock && $isAvailable);
+
+        if ($this->config['categories']) {
+            list($productCategories, $categoryId, $categoryPath) = $this->_getCategories($this->config['contest_id'], $productInfo);
+            $product
+            ->setCategoryCode($categoryId)
+            ->setCategoryPath($categoryPath);
+        }
+
+        $product->setUrl($this->_getUrl($productInfo, $productCategories));
+
+        return $product;
+    }*/
+
+    /*    protected function _getDescription($productInfo)
     {
         $description = null;
 
@@ -721,205 +655,212 @@ class SoapConnector
     protected function _isVisible($productInfo)
     {
         return isset($productInfo->visibility) && in_array($productInfo->visibility, [self::PRODUCT_VISIBILITY_IN_SEARCH, self::PRODUCT_VISIBILITY_IN_CATALOG, self::PRODUCT_VISIBILITY_BOTH]);
-    }
+    }*/
 
-    public function importProductById($id, $type, $productInfo)
+    /*public function buildOrderInfo($orderInfo)
     {
-        if (empty($productInfo) || empty($productInfo->sku)) {
-            echo "Producto no encontrado sku #{$id}\n";
-            return null;
+        $customer = null;
+
+        if (isset($orderInfo->customer_id)) {
+            $customer = $this->client->getCustomerInfo($orderInfo->customer_id);
         }
 
-        if (!isset($productInfo->type_id) || $productInfo->type_id != $type) {
-            echo "Producto de tipo {$productInfo->type_id} vs {$type}\n";
-            return null;
+        $serviceUid = $this->getServiceUidField($customer, $orderInfo);
+
+        $o = new OrderConectorModel();
+        $c = new CustomerConectorModel();
+
+        foreach ($orderInfo->items as $item) {
+            $product = $this->client->findProductInfo($item->sku);
+
+            $categoryId = null;
+            $categoryPath = null;
+            $categories = [];
+            $productUrl = null;
+            $productThumbnail = null;
+            $productPicture = null;
+
+            if (!is_null($product) && isset($product->category_ids) && count($product->category_ids) > 0) {
+                $categories = $product->category_ids;
+                $categoryId = $product->category_ids[0];
+                $categoryPath = ProductCategoryService::buildCategoryPath(
+                    $this->config['contest_id'],
+                    $categoryId
+                );
+            }
+
+            $o->addInvoiceLine(
+                $item->sku,
+                $item->name,
+                (int)$item->qty_ordered,
+                $item->price,
+                $categoryId,
+                $categoryPath,
+                null, //$variations,
+                $productUrl,
+                $productThumbnail,
+                $productPicture,
+                $categories
+            );
         }
 
-        if (!isset($productInfo->name) || empty($productInfo->name)) {
-            return null;
+
+        $email = $orderInfo->customer_email;
+        $document = $customer && isset($customer->dni) && !empty(trim($customer->dni)) ? trim($customer->dni) : null;
+
+        if ($serviceUid == $email || $serviceUid == $document) {
+            $serviceUid = null;
         }
 
-        $specifications = null;
-        $stockQuantity = null;
-        $basename = null;
-        $stockInfo = null;
+        $c->setUid($serviceUid);
+        $c->setEmail($orderInfo->customer_email);
+        $c->setDocument($document);
+        $c->setName($orderInfo->customer_firstname);
+        $c->setLastName($orderInfo->customer_lastname);
+        $c->setState($customer && isset($customer->region) ? $customer->region : null);
+        $c->setStreet($customer && isset($customer->street) ? $customer->street : null);
+        $c->setCountry($customer && isset($customer->country_id) ? $customer->country_id : null);
 
-        $inStock = $this->_isVisible($productInfo);
-        $isAvailable = $this->_isAvailable($productInfo);
+        if (!is_null($customer)) {
+            $c->setTags(["group" . $customer->group_id]);
+        }
 
-        if ($inStock && $isAvailable) {
-            $stockInfo = $this->getStockForProduct($id);
-
-            if (!empty($stockInfo)) {
-                $stockQuantity = (int) $stockInfo[0]->qty;
-                $inStock = (boolean) $stockInfo[0]->is_in_stock;
-
-                if ($inStock && $stockQuantity == 0) {
-                    // pongo el stock en 1 porque realmente hay stock pero no le ponen cantidad en algunos casos
-                    $stockQuantity = 1;
-                }
+        if (isset($orderInfo->customer_gender)) {
+            if ($orderInfo->customer_gender == "1") {
+                $c->setGender(UserService::MALE);
+            } elseif ($orderInfo->customer_gender == "2") {
+                $c->setGender(UserService::FEMALE);
             }
         }
 
-        $description = $this->_getDescription($productInfo);
-        $imageUrl = $this->_getImageUrl($id, $productInfo);
-        $thumbnailUrl = $this->_getThumbnailUrl($id, $productInfo);
-        $price = isset($productInfo->price) && !is_null($productInfo->price) ? (float) $productInfo->price : null;
-        $productCategories = null;
+        //echo $order->created_at . "\n";
+        return $o
+        ->setNumber($orderInfo->increment_id)
+        ->setTotal($orderInfo->base_subtotal - abs($orderInfo->base_discount_amount))
+        ->setGrossTotal($orderInfo->base_subtotal)
+        ->setShippingTotal($orderInfo->base_shipping_amount)
+        ->setTaxTotal($orderInfo->base_tax_amount)
+        ->setDiscountTotal(abs($orderInfo->base_discount_amount))
+        ->setDate($orderInfo->created_at)
+        ->setCustomer($c);
+    }*/
 
-        $product = new \ProductConnectorModel($id);
-        $product
-        ->setContestId($this->config['contest_id'])
-        ->setName($productInfo->name)
-        ->setDescription($description)
-        ->setPrice($price)
-        ->setImageUrl($imageUrl)
-        ->setThumbnailUrl($thumbnailUrl)
-        ->setStock($stockQuantity)
-        ->setAvailability($inStock && $isAvailable);
+    /*public function getCategories()
+    {
+        $categories = $this->client->findCategories();
 
-        if ($this->config['categories']) {
-            list($productCategories, $categoryId, $categoryPath) = $this->_getCategories($this->config['contest_id'], $productInfo);
-            $product
-            ->setCategoryCode($categoryId)
-            ->setCategoryPath($categoryPath);
-        }
-
-        $product->setUrl($this->_getUrl($productInfo, $productCategories));
-
-        return $product;
+        return (isset($categories->children)) ? $this->buildCategoryTree($categories->children) : [];
     }
 
-    public function notify($message)
+    protected function getCategoryInfo($categoryId)
     {
-        try {
-            retry(function () use ($message) {
-                $slack = new \Woowup\Services\Notifications\SlackNotificator(\Yii::app()->params['SLACK_WEBHOOK'], 'magento');
-                $slack->notify("[MAGENTO][VENTAS][{$this->getContestId()}] " . $message);
-            });
-        } catch (Exception $e) {
-            \Yii::log("[SLACK_ERROR] {$e->getMessage()}. Mensaje Original: [MAGENTO][VENTAS][{$this->getContestId()}] " . $message, CLogger::LEVEL_INFO, 'MagentoSales');
-        }
+        return $this->client->findCategory($categoryId);
+    }*/
+
+        /*protected function findProductAditionalAttributes($setId, $type = 'simple')
+    {
+        return $this->client->findProductAditionalAttributes($setId, $type);
     }
 
-    public function buildCustomer($magentoCustomer)
+    public function getProductTypes()
     {
-        // Email, first name and last name
-        $customer = [
-            'email' => mb_strtolower(trim($magentoCustomer->email)),
-            'first_name' => ucwords(mb_strtolower(trim($magentoCustomer->firstname))),
-            'last_name' => ucwords(mb_strtolower(trim($magentoCustomer->lastname))),
-            'tags' => self::CUSTOMER_TAG,
-        ];
+        return isset($this->config['product_types']) ? $this->config['product_types'] : [];
+    }
 
-        // Document
-        if (isset($magentoCustomer->dni) && ($document = $this->validDocument($magentoCustomer->dni))) {
-            $customer['document'] = $document;
-            $customer['document_type'] = 'DNI';
+    public function getContestId()
+    {
+        return isset($this->config['contest_id']) ? $this->config['contest_id'] : null;
+    }
+
+    protected function buildCategoryTree($categories)
+    {
+        $tree = [];
+
+        foreach ($categories as $category) {
+            echo "Buscando informacion de categoria {$category->name}\n";
+            $info = $this->getCategoryInfo($category->category_id);
+
+            $tree[] = new CategoryConectorModel(
+                $category->category_id,
+                $category->name,
+                isset($category->children) && !empty($category->children) ?
+                $this->buildCategoryTree($category->children) : [],
+                !empty($info) && isset($info->path) && !empty($info->path) ? $info->path : "",
+                !empty($info) && isset($info->url_path) && !empty($info->url_path) && isset($this->config['host']) ? ($this->config['host']."/".$info->url_path) : null,
+                null, #imagen
+                !empty($info) && isset($info->url_key) && !empty($info->url_key) ? $info->url_key : null
+            );
         }
 
-        // Address
-        if (isset($magentoCustomer->addressInfo) && !empty($magentoCustomer->addressInfo)) {
-            $address = $magentoCustomer->addressInfo;
-            $customer += [
-                // TO-DO convertir país de ISO2 a ISO3
-                'country' => isset($address->country_id) ? $address->country_id : null,
-                'state' => isset($address->region) ? ucwords(mb_strtolower(trim($address->region))) : null,
-                'street' => isset($address->street) ? ucwords(mb_strtolower(trim($address->street))) : null,
-                'city' => isset($address->city) ? ucwords(mb_strtolower(trim($address->city))) : null,
-                'postcode' => isset($address->postcode) ? $address->postcode : null,
-                'telephone' => isset($address->telephone) ? $address->telephone : null,
-            ];
-        }
+        return $tree;
+    }*/
 
-        // Birthdate
-        if (isset($magentoCustomer->dob)) {
-            $customer['birthdate'] = trim($customer->dob);
-        }
+    /*public function getOrder($id)
+    {
+        return $this->buildOrderInfo($this->client->findOrderInfo($id));
+    }
 
-        // Gender
-        if (isset($magentoCustomer->gender)) {
-            $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
-        }
+    public function getOrdersWithoutBuild($fromDate, $toDate = null, $allStatus = false)
+    {
+        $i = 0;
+        $groupByStatus = [];
+        $date = date('Y-m-d', strtotime($fromDate));
+        $toDate = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
 
-        // Group
-        if (isset($magentoCustomer->group_id) && !empty($magentoCustomer->group_id)) {
-            $customer['tags'] .= ",group" . $magentoCustomer->group_id;
-        }
+        echo "Buscando desde {$date} al {$toDate}\n";
 
-        // Clean empty values
-        foreach ($customer as $key => $value) {
-            if (empty($value)) {
-                unset($customer[$key]);
-            } elseif (is_array($value)) {
-                foreach ($value as $subKey => $subValue) {
-                    if (empty($subValue)) {
-                        unset($customer[$key][$subKey]);
-                    }
+        while ($date <= $toDate) {
+            $orders = $this->client->findOrders($date . " 00:00:00", $date . " 23:59:59");
+
+            echo "Cantidad de ventas en el día {$date}: " . count($orders) . "\n";
+
+            foreach ($orders as $order) {
+                if (($allStatus || in_array($order->status, $this->config['status'])) && (empty($this->config['store_id']) || $order->store_id == $this->config['store_id'])) {
+                    yield $order;
                 }
             }
+
+            $date = date('Y-m-d', strtotime($date . " +1 day"));
         }
+    }*/
 
-        // Check if customer has email or document
-        if (empty($customer['email']) && (!isset($customer['document']) || empty($customer['document']))) {
-            $this->logger->info("Customer " . $magentoCustomer->customer_id . " has no valid document or email");
-            return null;
-        }
-
-        return $customer;
-    }
-
-    protected function validDocument($document)
+    /*public function listProducts($from = null, $to = null)
     {
-        $document = trim(str_replace([".", "-", " ", "(", ")"], "", $document));
-        return !empty($document) && preg_match("/^\d{7,}$/", $document) !== false ? $document : null;
+        return $this->client->listProducts($from, $to);
     }
 
-    public function buildOrderPayment($paymentInfo)
+    public function getNewCustomers($from, $to = null)
     {
-        $payment = [];
-        
-        if (isset($paymentInfo->payment_type_id) && !empty($paymentInfo->payment_type_id)) {
-            $payment['type'] = $this->getPaymentType($paymentInfo->payment_type_id);
-        }
-
-        if (isset($paymentInfo->payment_method) && !empty($paymentInfo->payment_method)) {
-            $payment['brand'] = ucwords(mb_strtolower(trim($paymentInfo->payment_method)));
-        }
-
-        if (isset($paymentInfo->cardTruncated) && !empty($paymentInfo->cardTruncated)) {
-            $payment['first_digits'] = substr(str_replace(' ', '', $paymentInfo->cardTruncated), 0, 6);
-        }
-
-        if (isset($paymentInfo->installments) && !empty($paymentInfo->installments)) {
-            $payment['installments'] = (int) trim($paymentInfo->installments);
-        }
-
-        if (isset($paymentInfo->total_amount) && !empty($paymentInfo->total_amount)) {
-            $payment['amount'] = (float) $paymentInfo->total_amount;
-        }
-
-        return $payment;
+        return $this->getCustomers($from, $to, true);
     }
 
-    public function getPaymentType($type)
+    public function findProductInfo($id, $field = 'sku')
     {
-        if (strpos($type, 'mercadopago') !== false) {
-            return 'mercadopago';
-        }
-
-        if (strpos($type, 'todopago') !== false) {
-            return 'todopago';
-        }
-
-        if (strpos($type, 'credit') !== false) {
-            return 'credit';
-        }
-
-        if (strpos($type, 'debit') !== false) {
-            return 'debit';
-        }
-
-        return 'other';
+        return $this->client->findProductInfo($id, $field);
     }
+
+    public function getStockForProduct($id)
+    {
+        return $this->client->getStockForProduct($id);
+    }
+
+    public function getMediaForProduct($id)
+    {
+        return $this->client->getMediaForProduct($id);
+    }
+
+    public function findProductAttributes($id)
+    {
+        return $this->client->findProductAttributes($id);
+    }
+
+    public function findProductAttributeSets()
+    {
+        return $this->client->findProductAttributeSets();
+    }
+
+    public function findProductCustomOptions($id)
+    {
+        return $this->client->findProductCustomOptions($id);
+    }*/
 }
