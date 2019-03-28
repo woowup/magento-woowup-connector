@@ -1,7 +1,7 @@
 <?php
 namespace MagentoWoowUpConnector\Clients;
 
-abstract class MagentoSoapClientAbstract
+abstract class SoapClientAbstract
 {
     /**
      * Base que se eleva a la cantidad de intentos que lleva para obtener

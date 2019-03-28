@@ -1,7 +1,9 @@
 <?php
 namespace MagentoWoowUpConnector\Clients;
 
-class MagentoSoapClientV2 extends MagentoSoapClientAbstract implements MagentoClientInterface
+use MagentoWoowUpConnector\Interfaces\ClientInterface;
+
+class SoapClientV2 extends SoapClientAbstract implements ClientInterface
 {
     const CONNECTION_TIMEOUT = 300; //5min
     const ID_FIELD = 'sku';

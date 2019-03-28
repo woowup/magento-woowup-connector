@@ -3,11 +3,11 @@
 namespace MagentoWoowUpConnector;
 
 use Psr;
-use MagentoWoowUpConnector\Clients\MagentoSoapClientV1;
-use MagentoWoowUpConnector\Clients\MagentoSoapClientV2;
+use MagentoWoowUpConnector\Clients\SoapClientV1;
+use MagentoWoowUpConnector\Clients\SoapClientV2;
 use MagentoWoowUpConnector\WoowUpHelper;
 
-class MagentoSOAP
+class SoapConnector
 {
     const CONNECTION_TIMEOUT = 300; //5min
 
@@ -29,6 +29,8 @@ class MagentoSOAP
     const CUSTOMER_TAG = 'Magento';
 
     const DEFAULT_BRANCH_NAME = 'MAGENTO';
+
+    const DEFAULT_ORDERS_DOWNLOAD_DAYS = 5;
 
     protected $sessionId;
     protected $variations;
@@ -62,10 +64,10 @@ class MagentoSOAP
 
         switch ($this->config['version']) {
             case 1:
-                return new MagentoSoapClientV1($this->config);
+                return new SoapClientV1($this->config);
                 break;
             case 2:
-                return new MagentoSoapClientV2($this->config);
+                return new SoapClientV2($this->config);
                 break;
             default:
                 throw new Exception("Unknown magento api version: ".$this->config['version']);
@@ -111,8 +113,11 @@ class MagentoSOAP
         $this->logger->info("Failed customers: " . count($stats['customers']['failed']));
     }
 
-    public function importOrders($days = 5, $update = false)
+    public function importOrders($days = null, $update = false)
     {
+        if (!$days) {
+            $days = self::DEFAULT_ORDERS_DOWNLOAD_DAYS;
+        }
         $this->logger->info("Importing customers from $days days");
         $fromDate = date('Y-m-d', strtotime("-$days days"));
 
@@ -404,7 +409,7 @@ class MagentoSOAP
             foreach ($this->variations as $variation) {
                 if (isset($magentoProduct->{$variation})) {
                     $product['variations'][] = [
-                        'name' => $variation,
+                        'name' => ucwords(mb_strtolower($variation)),
                         'value' => $magentoProduct->{$variation},
                     ];
                 }
