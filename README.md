@@ -21,8 +21,10 @@ Agrega el paquete a tu `composer.json` dentro del directorio de trabajo:
 {
   "require": {
     "woowup/magento-woowup-connector": "dev-master"
-  }
+  },
+  "minimum-stability": "dev"
 }
+
 ```
 
 Actualiza tus paquetes de Composer desde la terminal de comandos:
@@ -31,4 +33,6 @@ Actualiza tus paquetes de Composer desde la terminal de comandos:
 > composer update
 ```
 
-Dentro del directorio `vendor` tendrás un directorio `woowup` donde estará instalado el paquete:
+Dentro del directorio `vendor` tendrás instaladas todas las dependencias, y dentro del directorio `woowup` estará instalado el paquete:
+
+![vendor](https://i.imgur.com/LztT4kT.png)
