@@ -1,6 +1,6 @@
 <?php
 
-namespace MagentoWoowUpConnector\Filters;
+namespace MagentoWoowUpConnector\Interfaces;
 
 interface OrderPointsFilterInterface
 {

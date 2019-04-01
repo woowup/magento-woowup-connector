@@ -1,8 +1,8 @@
 <?php
 
-namespace MagentoWoowUpConnector\Clients;
+namespace MagentoWoowUpConnector\Interfaces;
 
-interface MagentoClientInterface
+interface ClientInterface
 {
     public function getCustomerInfo($customerId);
 
