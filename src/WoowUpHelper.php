@@ -114,7 +114,7 @@ class WoowUpHelper
      * @param  array $product Producto en formato WoowUp
      * @return boolean        true: producto actualizado/creado con éxito, false: error
      */
-    protected function upsertProduct($product)
+    public function upsertProduct($product)
     {
         try {
             $this->_woowupClient->products->update($product['sku'], $product);
