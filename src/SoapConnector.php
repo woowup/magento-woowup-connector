@@ -217,12 +217,12 @@ class SoapConnector
         $date          = date('Y-m-d', strtotime($fromDate));
         $toDate        = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
 
-        $this->logger->info("Buscando desde {$date} al {$toDate}");
-        $message = "Buscando ventas actualizadas desde {$date} hasta {$toDate}.\n";
-        $message .= "Estados para descargar: " . json_encode($this->config['status']) . "\n";
+        $this->logger->info("Searching from {$date} to {$toDate}");
+        $message = "Searching for updated purchases since {$date} to {$toDate}.\n";
+        $message .= "Downloadable statuses: " . json_encode($this->config['status']) . "\n";
 
         if (isset($this->config['store_id']) && !empty($this->config['store_id'])) {
-            $message .= "Tienda: " . $this->config['store_id'];
+            $message .= "Store: " . $this->config['store_id'];
         }
 
         $this->logger->info($message);
@@ -230,7 +230,7 @@ class SoapConnector
         while ($date <= $toDate) {
             $magentoOrders = $this->client->findOrders($date . " 00:00:00", $date . " 23:59:59");
 
-            $this->logger->info("Cantidad de ventas en el día {$date}: " . count($magentoOrders));
+            $this->logger->info("Orders count for date {$date}: " . count($magentoOrders));
 
             foreach ($magentoOrders as $magentoOrder) {
                 if (!isset($groupByStatus[$magentoOrder->status])) {
@@ -250,8 +250,8 @@ class SoapConnector
             $date = date('Y-m-d', strtotime($date . " +1 day"));
         }
 
-        $this->logger->info("Estado de ventas para la cuenta " . $this->config['app_id'] . ": " . json_encode($this->config['status']));
-        $this->logger->info("Ventas descargadas por estado: " . json_encode($groupByStatus));
+        $this->logger->info("Statuses for the account " . $this->config['app_id'] . ": " . json_encode($this->config['status']));
+        $this->logger->info("Downloaded orders by status: " . json_encode($groupByStatus));
     }
 
     /**
@@ -262,6 +262,8 @@ class SoapConnector
      */
     public function getProducts(int $months = 12, $all = false)
     {
+        $this->logger->info("Getting products");
+
         $start = time();
 
         if ($all) {
@@ -280,23 +282,23 @@ class SoapConnector
 
         while ($i > 0) {
             if ($from && $to) {
-                $this->logger->info("Buscar desde {$from} hasta {$to}");
+                $this->logger->info("Searching since {$from} to {$to}");
             }
 
             $mgProducts = $this->listProducts($from . " 00:00:00", $to . " 23:59:59");
             $total      = count($mgProducts);
 
             if (empty($mgProducts)) {
-                $this->logger->info("No hay productos para descargar para el período");
+                $this->logger->info("No products for the period");
             } else {
-                $this->logger->info("Cantidad de productos magento: " . $total);
+                $this->logger->info("Magento products count: " . $total);
 
                 foreach ($mgProducts as $mgProduct) {
                     if (isset($mgProduct->sku) && !empty($mgProduct->sku)) {
                         $skus[] = $mgProduct->sku;
 
                         $this->logger->info("Sku #{$mgProduct->sku}");
-                        $this->logger->info("Buscando info en magento...");
+                        $this->logger->info("Searching info in Magento...");
                         $productInfo = $this->findProductInfo($mgProduct->sku);
 
                         if ($productInfo) {
@@ -324,7 +326,7 @@ class SoapConnector
             }
         }
 
-        $this->logger->info("Termino la búsqueda de productos en magento");
+        $this->logger->info("Search for Magento products Finished");
     }
 
     /**
@@ -720,12 +722,12 @@ class SoapConnector
     protected function buildProduct($id, $type, $productInfo)
     {
         if (empty($productInfo) || empty($productInfo->sku)) {
-            $this->logger->info("Producto no encontrado sku #{$id}");
+            $this->logger->info("Product not found for sku #{$id}");
             return null;
         }
 
         if (!isset($productInfo->type_id) || $productInfo->type_id != $type) {
-            $this->logger->info("Producto de tipo {$productInfo->type_id} vs {$type}");
+            $this->logger->info("Product of type {$productInfo->type_id} does not match {$type}");
             return null;
         }
 
@@ -799,7 +801,7 @@ class SoapConnector
 
         $categoryId = array_pop($categoryIds);
         if (!isset($this->categories[$categoryId])) {
-            $this->logger->info("Id de categoría $categoryId no encontrado");
+            $this->logger->info("Category id $categoryId not found");
             return $category;
         }
 
@@ -995,12 +997,12 @@ class SoapConnector
      */
     protected function getCategories()
     {
-        $this->logger->info("Buscando categorias");
+        $this->logger->info("Getting categories");
 
         $tree       = $this->findCategories();
         $categories = $this->flatternCategoryTree($tree);
 
-        $this->logger->info("Finalizada búsqueda de categorías");
+        $this->logger->info("Search for categories finished");
 
         return $categories;
     }
@@ -1026,7 +1028,7 @@ class SoapConnector
         $tree = [];
 
         foreach ($categories as $category) {
-            $this->logger->info("Buscando informacion de categoria {$category->name}");
+            $this->logger->info("Searching info for category {$category->name}");
             $info = $this->getCategoryInfo($category->category_id);
 
             $tree[] = [
