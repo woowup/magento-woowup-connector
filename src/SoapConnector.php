@@ -2,7 +2,6 @@
 
 namespace MagentoWoowUpConnector;
 
-use Psr;
 use MagentoWoowUpConnector\Clients\SoapClientV1;
 use MagentoWoowUpConnector\Clients\SoapClientV2;
 use MagentoWoowUpConnector\WoowUpHelper;
@@ -13,15 +12,15 @@ class SoapConnector
 
     const STATUS_COMPLETE = 'complete';
 
-    const PRODUCT_VISIBILITY_NOT_VISIBLE    = 1;
-    const PRODUCT_VISIBILITY_IN_CATALOG     = 2;
-    const PRODUCT_VISIBILITY_IN_SEARCH      = 3;
-    const PRODUCT_VISIBILITY_BOTH           = 4;
+    const PRODUCT_VISIBILITY_NOT_VISIBLE = 1;
+    const PRODUCT_VISIBILITY_IN_CATALOG  = 2;
+    const PRODUCT_VISIBILITY_IN_SEARCH   = 3;
+    const PRODUCT_VISIBILITY_BOTH        = 4;
 
     const PRODUCT_STATUS_DISABLED = 2;
-    const PRODUCT_STATUS_ENABLED = 1;
+    const PRODUCT_STATUS_ENABLED  = 1;
 
-    const PRODUCT_TYPE_SIMPLE = 'simple';
+    const PRODUCT_TYPE_SIMPLE       = 'simple';
     const PRODUCT_TYPE_CONFIGURABLE = 'configurable';
 
     const SERVICEUID_FIELD = 'order.customer_email';
@@ -41,22 +40,30 @@ class SoapConnector
     protected $client;
     protected $logger;
     protected $woowup;
+    protected $config;
+    protected $categories;
+    protected $filters = [];
 
-    function __construct(array $config, $logger, $woowupClient)
+    public function __construct(array $config, $logger, $woowupClient)
     {
-        $this->sessionId = null;
+        $this->sessionId      = null;
         $this->connectionTime = null;
-        $this->config = $config;
-        $this->variations = explode(',', $config['variations']);
-        $this->productsInfo = [];
-        $this->customersInfo = [];
-        $this->branchName = (isset($config['branchName']) && !empty($config['branchName'])) ? $config['branchName'] : self::DEFAULT_BRANCH_NAME;
-        $this->client = $this->getApiClient();
-        $this->logger = $logger;
-        $this->woowup = new WoowUpHelper($woowupClient, $logger);
+        $this->config         = $config;
+        $this->variations     = explode(',', $config['variations']);
+        $this->productsInfo   = [];
+        $this->customersInfo  = [];
+        $this->branchName     = (isset($config['branchName']) && !empty($config['branchName'])) ? $config['branchName'] : self::DEFAULT_BRANCH_NAME;
+        $this->client         = $this->getApiClient();
+        $this->logger         = $logger;
+        $this->woowup         = new WoowUpHelper($woowupClient, $logger);
     }
 
-    public function importCustomers($days = 5)
+    /**
+     * Imports customers updated since an amount of days
+     * @param  integer $days [description]
+     * @return [type]        [description]
+     */
+    public function importCustomers(int $days = 5)
     {
         $this->logger->info("Importing customers from $days days");
         $fromDate = date('Y-m-d', strtotime("-$days days"));
@@ -94,6 +101,12 @@ class SoapConnector
         $this->logger->info("Failed customers: " . count($stats['customers']['failed']));
     }
 
+    /**
+     * Imports orders created since an amount of days, can update existing orders
+     * @param  [type]  $days   [description]
+     * @param  boolean $update [description]
+     * @return [type]          [description]
+     */
     public function importOrders($days = null, $update = false)
     {
         if (!$days) {
@@ -129,6 +142,32 @@ class SoapConnector
         $this->logger->info("Failed orders: " . count($stats['orders']['failed']));
     }
 
+    /**
+     * Imports products created since an amount of months
+     * @param  int|integer $months [description]
+     * @return [type]              [description]
+     */
+    public function importProducts(int $months = 6)
+    {
+        $this->logger->info("Importing products from $months months");
+        foreach ($this->getProducts($months) as $product) {
+            $this->woowup->upsertProduct($product);
+        }
+
+        $stats = $this->woowup->getApiStats();
+        $this->logger->info("Finished. Stats:");
+        $this->logger->info("Created products: " . $stats['products']['created']);
+        $this->logger->info("Updated products: " . $stats['products']['updated']);
+        $this->logger->info("Failed products: " . count($stats['products']['failed']));
+    }
+
+    /**
+     * Searches customers between two dates and converts them into Woowup's API format
+     * @param  [type]  $from [description]
+     * @param  [type]  $to   [description]
+     * @param  boolean $new  [description]
+     * @return [type]        [description]
+     */
     public function getCustomers($from, $to = null, $new = false)
     {
         if (is_null($to)) {
@@ -141,7 +180,7 @@ class SoapConnector
             }
         } else {
             $this->logger->info("Getting customers from $from to $to");
-            $i = 0;
+            $i    = 0;
             $date = date('Y-m-d', time() - 60 * 60 * 24 * $i);
 
             while ($date >= substr($from, 0, 10)) {
@@ -162,12 +201,21 @@ class SoapConnector
         }
     }
 
-    public function getOrders($fromDate, $toDate = null, $importing = false)
+    /**
+     * Searches orders in Magento between two dates and converts them to WoowUp's API format
+     * @param  [type]  $fromDate  [description]
+     * @param  [type]  $toDate    [description]
+     * @return [type]             [description]
+     */
+    public function getOrders($fromDate, $toDate = null)
     {
-        $i = 0;
+        // Categorias
+        $this->categories = $this->config['categories'] ? $this->getCategories() : [];
+
+        $i             = 0;
         $groupByStatus = [];
-        $date = date('Y-m-d', strtotime($fromDate));
-        $toDate = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
+        $date          = date('Y-m-d', strtotime($fromDate));
+        $toDate        = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
 
         $this->logger->info("Buscando desde {$date} al {$toDate}");
         $message = "Buscando ventas actualizadas desde {$date} hasta {$toDate}.\n";
@@ -191,7 +239,7 @@ class SoapConnector
                 $groupByStatus[$magentoOrder->status]++;
 
                 if (in_array($magentoOrder->status, $this->config['status']) && (empty($this->config['store_id']) || $magentoOrder->store_id == $this->config['store_id'])) {
-                    $buildOrder = $this->buildOrder($magentoOrder, $importing);
+                    $buildOrder = $this->buildOrder($magentoOrder);
 
                     if ($buildOrder) {
                         yield $buildOrder;
@@ -202,34 +250,128 @@ class SoapConnector
             $date = date('Y-m-d', strtotime($date . " +1 day"));
         }
 
-        $this->logger->info("Estado de ventas para la cuenta ".$this->config['app_id'].": " . json_encode($this->config['status']));
-        $this->logger->info("Ventas descargadas por estado: ".json_encode($groupByStatus));
+        $this->logger->info("Estado de ventas para la cuenta " . $this->config['app_id'] . ": " . json_encode($this->config['status']));
+        $this->logger->info("Ventas descargadas por estado: " . json_encode($groupByStatus));
     }
 
+    /**
+     * Searches products in Magento created since an amount of months or everyone and maps them to WoowUp's API
+     * @param  int|integer $months [description]
+     * @param  boolean     $all    [description]
+     * @return [type]              [description]
+     */
+    public function getProducts(int $months = 12, $all = false)
+    {
+        $start = time();
+
+        if ($all) {
+            $i    = 1;
+            $from = null;
+            $to   = null;
+        } else {
+            /* ahora importo productos desde magento desde 1 año atras, todos los meses */
+            $i    = $months;
+            $from = date('Y-m-d', strtotime(date('Y-m-d') . " -{$i} months"));
+            $to   = date('Y-m-d', strtotime(date('Y-m-d') . " -" . ($i - 1) . " months"));
+        }
+
+        // Categorias
+        $this->categories = ($this->config['categories']) ? $this->getCategories() : [];
+
+        while ($i > 0) {
+            if ($from && $to) {
+                $this->logger->info("Buscar desde {$from} hasta {$to}");
+            }
+
+            $mgProducts = $this->listProducts($from . " 00:00:00", $to . " 23:59:59");
+            $total      = count($mgProducts);
+
+            if (empty($mgProducts)) {
+                $this->logger->info("No hay productos para descargar para el período");
+            } else {
+                $this->logger->info("Cantidad de productos magento: " . $total);
+
+                foreach ($mgProducts as $mgProduct) {
+                    if (isset($mgProduct->sku) && !empty($mgProduct->sku)) {
+                        $skus[] = $mgProduct->sku;
+
+                        $this->logger->info("Sku #{$mgProduct->sku}");
+                        $this->logger->info("Buscando info en magento...");
+                        $productInfo = $this->findProductInfo($mgProduct->sku);
+
+                        if ($productInfo) {
+                            $types = $this->getProductTypes();
+
+                            foreach ($types as $type) {
+                                $product = $this->buildProduct($mgProduct->sku, $type, $productInfo);
+
+                                if ($product) {
+                                    yield $product;
+                                }
+                            }
+                        }
+                    }
+
+                    $this->logger->info("Total " . $total);
+                }
+            }
+
+            $i--;
+
+            if ($i > 0) {
+                $from = date('Y-m-d', strtotime(date('Y-m-d') . " -{$i} months"));
+                $to   = date('Y-m-d', strtotime(date('Y-m-d') . " -" . ($i - 1) . " months"));
+            }
+        }
+
+        $this->logger->info("Termino la búsqueda de productos en magento");
+    }
+
+    /**
+     * Adds a filter
+     * @param [type] $filter [description]
+     */
+    public function addFilter($filter)
+    {
+        $this->filters[] = $filter;
+
+        return true;
+    }
+
+    /**
+     * Searches customer info in Magento
+     * @param  [type] $customerId [description]
+     * @return [type]             [description]
+     */
     protected function getCustomerInfo($customerId)
     {
         $this->logger->info("Getting info for customer $customerId");
         return $this->client->getCustomerInfo($customerId);
     }
 
-    protected function buildOrder($magentoOrder, $importing = false)
+    /**
+     * Maps a Magento order to WoowUp's format
+     * @param  [type] $magentoOrder [description]
+     * @return [type]               [description]
+     */
+    protected function buildOrder($magentoOrder)
     {
         $this->logger->info("Building order " . $magentoOrder->increment_id);
         $order = [];
 
-        $customer = null;
+        $customer         = null;
         $magentoOrderInfo = $this->client->findOrderInfo($magentoOrder->increment_id);
 
         if (isset($magentoOrder->customer_id)) {
             $magentoCustomer = $this->client->getCustomerInfo($magentoOrder->customer_id);
-            $customer = $this->buildCustomer($magentoCustomer);
+            $customer        = $this->buildCustomer($magentoCustomer);
         }
 
         // Find document in payment info
         if (!isset($customer['document']) && isset($magentoOrderInfo->payment) && !empty($magentoOrderInfo->payment)) {
             $payment = $magentoOrderInfo->payment;
             if (isset($payment->additional_information) && isset($payment->additional_information->docNumber) && !empty($payment->additional_information->docNumber)) {
-                $customer['document'] = trim($payment->additional_information->docNumber);
+                $customer['document']      = trim($payment->additional_information->docNumber);
                 $customer['document_type'] = trim($payment->additional_information->docType);
             }
         }
@@ -240,7 +382,7 @@ class SoapConnector
         }
 
         $order['invoice_number'] = $magentoOrder->increment_id;
-        $order['customer'] = $customer;
+        $order['customer']       = $customer;
         if (isset($customer['document'])) {
             $order['document'] = $customer['document'];
         } else {
@@ -256,19 +398,21 @@ class SoapConnector
 
             $magentoProduct = $this->client->findProductInfo($item->sku);
 
-            $categoryId = null;
-            $categoryPath = null;
-            $categories = [];
-            $productUrl = null;
-            $productThumbnail = null;
-            $productPicture = null;
+            $sku = trim($item->sku);
+            foreach ($this->filters as $filter) {
+                if (method_exists($filter, 'filterSku')) {
+                    $sku = $filter->filterSku($sku);
+                }
+            }
 
             $product = [
-                'sku' => trim($item->sku),
+                'sku'          => $sku,
                 'product_name' => isset($item->name) ? ucwords(mb_strtolower(trim($item->name))) : '',
-                'quantity' => (int) $item->qty_ordered,
-                'unit_price' => (float) $item->price,
-                'variations' => [],
+                'quantity'     => (int) $item->qty_ordered,
+                'unit_price'   => (float) $item->price,
+                'variations'   => [],
+                'url'          => $this->_getUrl($magentoProduct),
+                'image_url'    => $this->_getImageUrl($item->sku, $magentoProduct),
             ];
 
             if ($product['quantity'] == 0) {
@@ -284,27 +428,22 @@ class SoapConnector
             foreach ($this->variations as $variation) {
                 if (isset($magentoProduct->{$variation})) {
                     $product['variations'][] = [
-                        'name' => ucwords(mb_strtolower($variation)),
+                        'name'  => ucwords(mb_strtolower($variation)),
                         'value' => $magentoProduct->{$variation},
                     ];
                 }
             }
 
             // TO-DO agregar proceso de categorias
-            /*if (!is_null($product) && $this->config['categories'] && isset($product->category_ids) && count($product->category_ids) > 0) {
-                $categories = $product->category_ids;
-                $categoryId = $product->category_ids[0];
-                $categoryPath = ProductCategoryService::buildCategoryPath(
-                    $this->config['contest_id'],
-                    $categoryId
-                );
-            }*/
+            if (!is_null($product) && $this->config['categories'] && isset($magentoProduct->category_ids) && count($magentoProduct->category_ids) > 0) {
+                $product['category'] = $this->buildProductCategory($magentoProduct->category_ids);
+            }
 
             $order['purchase_detail'][] = $product;
         }
-        
+
         // createtime y approvedtime
-        $order['createtime'] = $magentoOrder->created_at;
+        $order['createtime']   = $magentoOrder->created_at;
         $order['approvedtime'] = date('c');
 
         // tienda
@@ -312,11 +451,11 @@ class SoapConnector
 
         // precios
         $order['prices'] = [
-            'gross' => (float) $magentoOrder->base_subtotal,
+            'gross'    => (float) $magentoOrder->base_subtotal,
             'discount' => (float) abs($magentoOrder->base_discount_amount),
-            'tax' => (float) $magentoOrder->base_tax_amount,
+            'tax'      => (float) $magentoOrder->base_tax_amount,
             'shipping' => (float) $magentoOrder->base_shipping_amount,
-            'total' => (float) $magentoOrder->base_subtotal - abs($magentoOrder->base_discount_amount),
+            'total'    => (float) $magentoOrder->base_subtotal - abs($magentoOrder->base_discount_amount),
         ];
 
         // payment
@@ -329,27 +468,43 @@ class SoapConnector
             }
         }
 
+        // puntos
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'getPurchasePoints')) {
+                $order['points'] = $filter->getPurchasePoints($order);
+            }
+        }
+
         return $order;
     }
 
+    /**
+     * Returns Magento stores
+     * @return [type] [description]
+     */
     protected function getStores()
     {
         return $this->client->getStores();
     }
 
+    /**
+     * Maps a Magento Customer to WoowUp's API format
+     * @param  [type] $magentoCustomer [description]
+     * @return [type]                  [description]
+     */
     protected function buildCustomer($magentoCustomer)
     {
         // Email, first name and last name
         $customer = [
-            'email' => mb_strtolower(trim($magentoCustomer->email)),
+            'email'      => mb_strtolower(trim($magentoCustomer->email)),
             'first_name' => ucwords(mb_strtolower(trim($magentoCustomer->firstname))),
-            'last_name' => ucwords(mb_strtolower(trim($magentoCustomer->lastname))),
-            'tags' => self::CUSTOMER_TAG,
+            'last_name'  => ucwords(mb_strtolower(trim($magentoCustomer->lastname))),
+            'tags'       => self::CUSTOMER_TAG,
         ];
 
         // Document
         if (isset($magentoCustomer->dni) && ($document = $this->validDocument($magentoCustomer->dni))) {
-            $customer['document'] = $document;
+            $customer['document']      = $document;
             $customer['document_type'] = 'DNI';
         }
 
@@ -358,11 +513,11 @@ class SoapConnector
             $address = $magentoCustomer->addressInfo;
             $customer += [
                 // TO-DO convertir país de ISO2 a ISO3
-                'country' => isset($address->country_id) ? $address->country_id : null,
-                'state' => isset($address->region) ? ucwords(mb_strtolower(trim($address->region))) : null,
-                'street' => isset($address->street) ? ucwords(mb_strtolower(trim($address->street))) : null,
-                'city' => isset($address->city) ? ucwords(mb_strtolower(trim($address->city))) : null,
-                'postcode' => isset($address->postcode) ? $address->postcode : null,
+                'country'   => isset($address->country_id) ? $address->country_id : null,
+                'state'     => isset($address->region) ? ucwords(mb_strtolower(trim($address->region))) : null,
+                'street'    => isset($address->street) ? ucwords(mb_strtolower(trim($address->street))) : null,
+                'city'      => isset($address->city) ? ucwords(mb_strtolower(trim($address->city))) : null,
+                'postcode'  => isset($address->postcode) ? $address->postcode : null,
                 'telephone' => isset($address->telephone) ? $address->telephone : null,
             ];
         }
@@ -404,16 +559,26 @@ class SoapConnector
         return $customer;
     }
 
+    /**
+     * Validates a document
+     * @param  [type] $document [description]
+     * @return [type]           [description]
+     */
     protected function validDocument($document)
     {
         $document = trim(str_replace([".", "-", " ", "(", ")"], "", $document));
         return !empty($document) && preg_match("/^\d{7,}$/", $document) !== false ? $document : null;
     }
 
+    /**
+     * Maps Magento payment to WoowUp's API format
+     * @param  [type] $paymentInfo [description]
+     * @return [type]              [description]
+     */
     protected function buildOrderPayment($paymentInfo)
     {
         $payment = [];
-        
+
         if (isset($paymentInfo->payment_type_id) && !empty($paymentInfo->payment_type_id)) {
             $payment['type'] = $this->getPaymentType($paymentInfo->payment_type_id);
         }
@@ -437,6 +602,11 @@ class SoapConnector
         return $payment;
     }
 
+    /**
+     * Maps Magento payment type to WoowUp's API format
+     * @param  [type] $type [description]
+     * @return [type]       [description]
+     */
     protected function getPaymentType($type)
     {
         if (strpos($type, 'mercadopago') !== false) {
@@ -458,6 +628,10 @@ class SoapConnector
         return 'other';
     }
 
+    /**
+     * Gets SOAP client according to defined version in property $config
+     * @return [type] [description]
+     */
     protected function getApiClient()
     {
         if (!isset($this->config['version'])) {
@@ -472,36 +646,86 @@ class SoapConnector
                 return new SoapClientV2($this->config);
                 break;
             default:
-                throw new Exception("Unknown magento api version: ".$this->config['version']);
+                throw new Exception("Unknown magento api version: " . $this->config['version']);
                 break;
         }
     }
 
+    /**
+     * Sets the store id in property $config and in SOAP Client
+     * @param [type] $storeId [description]
+     */
     protected function setStore($storeId)
     {
         $this->config['store_id'] = $storeId;
         $this->client->setStore($storeId);
     }
 
+    /**
+     * Gets the current store
+     * @return [type] [description]
+     */
     protected function getStore()
     {
         return isset($this->config['store_id']) ? $this->config['store_id'] : null;
     }
 
+    /**
+     * Gets the instantiated SOAP Client
+     * @return [type] [description]
+     */
     protected function getClient()
     {
         return $this->client;
     }
 
-    /*    public function importProductById($id, $type, $productInfo)
+    /**
+     * Calls SOAP Client to list products between two dates
+     * @param  [type] $from [description]
+     * @param  [type] $to   [description]
+     * @return [type]       [description]
+     */
+    protected function listProducts($from = null, $to = null)
+    {
+        return $this->client->listProducts($from, $to);
+    }
+
+    /**
+     * Gets a product's info
+     * @param  [type] $id    [description]
+     * @param  string $field [description]
+     * @return [type]        [description]
+     */
+    protected function findProductInfo($id, $field = 'sku')
+    {
+        return $this->client->findProductInfo($id, $field);
+    }
+
+    /**
+     * Gets product_types defined in property $config
+     * @return [type] [description]
+     */
+    protected function getProductTypes()
+    {
+        return isset($this->config['product_types']) ? explode(',', $this->config['product_types']) : [];
+    }
+
+    /**
+     * Maps a Magento Product to WoowUp's API format
+     * @param  [type] $id          [description]
+     * @param  [type] $type        [description]
+     * @param  [type] $productInfo [description]
+     * @return [type]              [description]
+     */
+    protected function buildProduct($id, $type, $productInfo)
     {
         if (empty($productInfo) || empty($productInfo->sku)) {
-            echo "Producto no encontrado sku #{$id}\n";
+            $this->logger->info("Producto no encontrado sku #{$id}");
             return null;
         }
 
         if (!isset($productInfo->type_id) || $productInfo->type_id != $type) {
-            echo "Producto de tipo {$productInfo->type_id} vs {$type}\n";
+            $this->logger->info("Producto de tipo {$productInfo->type_id} vs {$type}");
             return null;
         }
 
@@ -510,11 +734,11 @@ class SoapConnector
         }
 
         $specifications = null;
-        $stockQuantity = null;
-        $basename = null;
-        $stockInfo = null;
+        $stockQuantity  = 0;
+        $basename       = null;
+        $stockInfo      = null;
 
-        $inStock = $this->_isVisible($productInfo);
+        $inStock     = $this->_isVisible($productInfo);
         $isAvailable = $this->_isAvailable($productInfo);
 
         if ($inStock && $isAvailable) {
@@ -522,7 +746,7 @@ class SoapConnector
 
             if (!empty($stockInfo)) {
                 $stockQuantity = (int) $stockInfo[0]->qty;
-                $inStock = (boolean) $stockInfo[0]->is_in_stock;
+                $inStock       = (boolean) $stockInfo[0]->is_in_stock;
 
                 if ($inStock && $stockQuantity == 0) {
                     // pongo el stock en 1 porque realmente hay stock pero no le ponen cantidad en algunos casos
@@ -531,36 +755,133 @@ class SoapConnector
             }
         }
 
-        $description = $this->_getDescription($productInfo);
-        $imageUrl = $this->_getImageUrl($id, $productInfo);
-        $thumbnailUrl = $this->_getThumbnailUrl($id, $productInfo);
-        $price = isset($productInfo->price) && !is_null($productInfo->price) ? (float) $productInfo->price : null;
+        $description       = $this->_getDescription($productInfo);
+        $imageUrl          = $this->_getImageUrl($id, $productInfo);
+        $thumbnailUrl      = $this->_getThumbnailUrl($id, $productInfo);
+        $price             = isset($productInfo->price) && !is_null($productInfo->price) ? (float) $productInfo->price : null;
         $productCategories = null;
 
-        $product = new \ProductConnectorModel($id);
-        $product
-        ->setContestId($this->config['contest_id'])
-        ->setName($productInfo->name)
-        ->setDescription($description)
-        ->setPrice($price)
-        ->setImageUrl($imageUrl)
-        ->setThumbnailUrl($thumbnailUrl)
-        ->setStock($stockQuantity)
-        ->setAvailability($inStock && $isAvailable);
-
-        if ($this->config['categories']) {
-            list($productCategories, $categoryId, $categoryPath) = $this->_getCategories($this->config['contest_id'], $productInfo);
-            $product
-            ->setCategoryCode($categoryId)
-            ->setCategoryPath($categoryPath);
+        $sku = $productInfo->sku;
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'filterSku')) {
+                $sku = $filter->filterSku($sku);
+            }
         }
 
-        $product->setUrl($this->_getUrl($productInfo, $productCategories));
+        $product = [
+            'sku'           => $sku,
+            'name'          => $productInfo->name,
+            'description'   => $description,
+            'price'         => $price,
+            'image_url'     => $imageUrl,
+            'thumbnail_url' => $thumbnailUrl,
+            'stock'         => $stockQuantity,
+            'available'     => ($inStock && $isAvailable),
+        ];
+
+        if ($this->config['categories'] && isset($productInfo->category_ids) && !empty($productInfo->category_ids)) {
+            $product['category'] = $this->buildProductCategory($productInfo->category_ids);
+        }
+
+        $product['url'] = $this->_getUrl($productInfo, $productCategories);
 
         return $product;
-    }*/
+    }
 
-    /*    protected function _getDescription($productInfo)
+    /**
+     * Builds Woowup category for a product
+     * @param  [type] $categoryIds [description]
+     * @return [type]              [description]
+     */
+    protected function buildProductCategory($categoryIds)
+    {
+        $category = [];
+
+        $categoryId = array_pop($categoryIds);
+        if (!isset($this->categories[$categoryId])) {
+            $this->logger->info("Id de categoría $categoryId no encontrado");
+            return $category;
+        }
+
+        $category[] = $this->categories[$categoryId];
+        $parentsIds = $this->categories[$categoryId]['path'];
+        while (!empty($parentsIds)) {
+            $parentId = array_pop($parentsIds);
+            if (!isset($this->categories[$parentId])) {
+                break;
+            }
+            array_unshift($category, $this->categories[$parentId]);
+        }
+
+        return $category;
+    }
+
+    /**
+     * Flatterns the category tree to an array
+     * @param  [type] $tree       [description]
+     * @param  array  $parentPath [description]
+     * @return [type]             [description]
+     */
+    protected function flatternCategoryTree($tree, $parentPath = [])
+    {
+        $categories = [];
+
+        foreach ($tree as $leaf) {
+            $categories[$leaf['id']] = [
+                'id'        => $leaf['id'],
+                'name'      => ucwords(mb_strtolower($leaf['name'])),
+                'url'       => $leaf['url_path'] ? $leaf['url_path'] : '',
+                'image_url' => $leaf['image'] ? $leaf['image'] : '',
+                'path'      => $parentPath,
+            ];
+
+            $path   = $parentPath;
+            $path[] = $leaf['id'];
+
+            if (isset($leaf['children']) && !empty($leaf['children'])) {
+                $categories += $this->flatternCategoryTree($leaf['children'], $path);
+            }
+        }
+
+        return $categories;
+    }
+
+    /**
+     * Returns if a magento product is marked as available
+     * @param  [type]  $productInfo [description]
+     * @return boolean              [description]
+     */
+    protected function _isAvailable($productInfo)
+    {
+        return isset($productInfo->status) && $productInfo->status == self::PRODUCT_STATUS_ENABLED;
+    }
+
+    /**
+     * Returns if a Magento product is marked as visible
+     * @param  [type]  $productInfo [description]
+     * @return boolean              [description]
+     */
+    protected function _isVisible($productInfo)
+    {
+        return isset($productInfo->visibility) && in_array($productInfo->visibility, [self::PRODUCT_VISIBILITY_IN_SEARCH, self::PRODUCT_VISIBILITY_IN_CATALOG, self::PRODUCT_VISIBILITY_BOTH]);
+    }
+
+    /**
+     * Returns the stock of a Magento product
+     * @param  [type] $id [description]
+     * @return [type]     [description]
+     */
+    protected function getStockForProduct($id)
+    {
+        return $this->client->getStockForProduct($id);
+    }
+
+    /**
+     * Returns the description of a Magento product
+     * @param  [type] $productInfo [description]
+     * @return [type]              [description]
+     */
+    protected function _getDescription($productInfo)
     {
         $description = null;
 
@@ -573,9 +894,15 @@ class SoapConnector
         return $description;
     }
 
-    public function _getImageUrl($sku, $productInfo)
+    /**
+     * Returns the image url of a Magento product
+     * @param  [type] $sku         [description]
+     * @param  [type] $productInfo [description]
+     * @return [type]              [description]
+     */
+    protected function _getImageUrl($sku, $productInfo)
     {
-        $imageUrl = null;
+        $imageUrl  = null;
         $mediaInfo = $this->getMediaForProduct($sku);
 
         if (!empty($mediaInfo)) {
@@ -599,9 +926,15 @@ class SoapConnector
         return $imageUrl;
     }
 
+    /**
+     * Returns the thumbnail url for a Magento product
+     * @param  [type] $sku         [description]
+     * @param  [type] $productInfo [description]
+     * @return [type]              [description]
+     */
     protected function _getThumbnailUrl($sku, $productInfo)
     {
-        $imageUrl = null;
+        $imageUrl  = null;
         $mediaInfo = $this->getMediaForProduct($sku);
 
         if (!empty($mediaInfo)) {
@@ -625,242 +958,174 @@ class SoapConnector
         return $imageUrl;
     }
 
-    protected function _getCategories($appId, $productInfo)
+    /**
+     * Calls SOAP client to get media info for a Magento Product
+     * @param  [type] $id [description]
+     * @return [type]     [description]
+     */
+    protected function getMediaForProduct($id)
     {
-        $categoryId = null;
-        $categoryPath = null;
-        $productCategories = null;
-
-        if (isset($productInfo->category_ids) && !empty($productInfo->category_ids)) {
-            $categoryId = $productInfo->category_ids[count($productInfo->category_ids) - 1];
-            $categoryPath = ProductCategoryService::buildCategoryPath($appId, $categoryId);
-            $productCategories = ProductCategoryService::buildCategoryTreeFromCode($appId, $categoryId);
-        }
-
-        return [$productCategories, $categoryId, $categoryPath];
+        return $this->client->getMediaForProduct($id);
     }
 
+    /**
+     * Returns the store URL for a Magento product
+     * @param  [type] $productInfo       [description]
+     * @param  [type] $productCategories [description]
+     * @return [type]                    [description]
+     */
     protected function _getUrl($productInfo, $productCategories = null)
     {
         $url = isset($productInfo->url_path) ? $productInfo->url_path : null;
 
+        $url = $this->config['host'] . '/' . $url;
+
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'filterUrl')) {
+                $url = $filter->filterUrl($url);
+            }
+        }
+
         return $url;
     }
 
-    protected function _isAvailable($productInfo)
+    /**
+     * Builds and returns flatterned category tree
+     * @return [type] [description]
+     */
+    protected function getCategories()
     {
-        return isset($productInfo->status) && $productInfo->status == self::PRODUCT_STATUS_ENABLED;
+        $this->logger->info("Buscando categorias");
+
+        $tree       = $this->findCategories();
+        $categories = $this->flatternCategoryTree($tree);
+
+        $this->logger->info("Finalizada búsqueda de categorías");
+
+        return $categories;
     }
 
-    protected function _isVisible($productInfo)
-    {
-        return isset($productInfo->visibility) && in_array($productInfo->visibility, [self::PRODUCT_VISIBILITY_IN_SEARCH, self::PRODUCT_VISIBILITY_IN_CATALOG, self::PRODUCT_VISIBILITY_BOTH]);
-    }*/
-
-    /*public function buildOrderInfo($orderInfo)
-    {
-        $customer = null;
-
-        if (isset($orderInfo->customer_id)) {
-            $customer = $this->client->getCustomerInfo($orderInfo->customer_id);
-        }
-
-        $serviceUid = $this->getServiceUidField($customer, $orderInfo);
-
-        $o = new OrderConectorModel();
-        $c = new CustomerConectorModel();
-
-        foreach ($orderInfo->items as $item) {
-            $product = $this->client->findProductInfo($item->sku);
-
-            $categoryId = null;
-            $categoryPath = null;
-            $categories = [];
-            $productUrl = null;
-            $productThumbnail = null;
-            $productPicture = null;
-
-            if (!is_null($product) && isset($product->category_ids) && count($product->category_ids) > 0) {
-                $categories = $product->category_ids;
-                $categoryId = $product->category_ids[0];
-                $categoryPath = ProductCategoryService::buildCategoryPath(
-                    $this->config['contest_id'],
-                    $categoryId
-                );
-            }
-
-            $o->addInvoiceLine(
-                $item->sku,
-                $item->name,
-                (int)$item->qty_ordered,
-                $item->price,
-                $categoryId,
-                $categoryPath,
-                null, //$variations,
-                $productUrl,
-                $productThumbnail,
-                $productPicture,
-                $categories
-            );
-        }
-
-
-        $email = $orderInfo->customer_email;
-        $document = $customer && isset($customer->dni) && !empty(trim($customer->dni)) ? trim($customer->dni) : null;
-
-        if ($serviceUid == $email || $serviceUid == $document) {
-            $serviceUid = null;
-        }
-
-        $c->setUid($serviceUid);
-        $c->setEmail($orderInfo->customer_email);
-        $c->setDocument($document);
-        $c->setName($orderInfo->customer_firstname);
-        $c->setLastName($orderInfo->customer_lastname);
-        $c->setState($customer && isset($customer->region) ? $customer->region : null);
-        $c->setStreet($customer && isset($customer->street) ? $customer->street : null);
-        $c->setCountry($customer && isset($customer->country_id) ? $customer->country_id : null);
-
-        if (!is_null($customer)) {
-            $c->setTags(["group" . $customer->group_id]);
-        }
-
-        if (isset($orderInfo->customer_gender)) {
-            if ($orderInfo->customer_gender == "1") {
-                $c->setGender(UserService::MALE);
-            } elseif ($orderInfo->customer_gender == "2") {
-                $c->setGender(UserService::FEMALE);
-            }
-        }
-
-        //echo $order->created_at . "\n";
-        return $o
-        ->setNumber($orderInfo->increment_id)
-        ->setTotal($orderInfo->base_subtotal - abs($orderInfo->base_discount_amount))
-        ->setGrossTotal($orderInfo->base_subtotal)
-        ->setShippingTotal($orderInfo->base_shipping_amount)
-        ->setTaxTotal($orderInfo->base_tax_amount)
-        ->setDiscountTotal(abs($orderInfo->base_discount_amount))
-        ->setDate($orderInfo->created_at)
-        ->setCustomer($c);
-    }*/
-
-    /*public function getCategories()
+    /**
+     * Calls SOAP client to get categories
+     * @return [type] [description]
+     */
+    protected function findCategories()
     {
         $categories = $this->client->findCategories();
 
         return (isset($categories->children)) ? $this->buildCategoryTree($categories->children) : [];
     }
 
-    protected function getCategoryInfo($categoryId)
-    {
-        return $this->client->findCategory($categoryId);
-    }*/
-
-        /*protected function findProductAditionalAttributes($setId, $type = 'simple')
-    {
-        return $this->client->findProductAditionalAttributes($setId, $type);
-    }
-
-    public function getProductTypes()
-    {
-        return isset($this->config['product_types']) ? $this->config['product_types'] : [];
-    }
-
-    public function getContestId()
-    {
-        return isset($this->config['contest_id']) ? $this->config['contest_id'] : null;
-    }
-
+    /**
+     * Builds the category tree
+     * @param  [type] $categories [description]
+     * @return [type]             [description]
+     */
     protected function buildCategoryTree($categories)
     {
         $tree = [];
 
         foreach ($categories as $category) {
-            echo "Buscando informacion de categoria {$category->name}\n";
+            $this->logger->info("Buscando informacion de categoria {$category->name}");
             $info = $this->getCategoryInfo($category->category_id);
 
-            $tree[] = new CategoryConectorModel(
-                $category->category_id,
-                $category->name,
+            $tree[] = [
+                'id'       => $category->category_id,
+                'name'     => $category->name,
+                'children' =>
                 isset($category->children) && !empty($category->children) ?
                 $this->buildCategoryTree($category->children) : [],
-                !empty($info) && isset($info->path) && !empty($info->path) ? $info->path : "",
-                !empty($info) && isset($info->url_path) && !empty($info->url_path) && isset($this->config['host']) ? ($this->config['host']."/".$info->url_path) : null,
-                null, #imagen
-                !empty($info) && isset($info->url_key) && !empty($info->url_key) ? $info->url_key : null
-            );
+                'path'     => !empty($info) && isset($info->path) && !empty($info->path) ? $info->path : "",
+                'url_path' => !empty($info) && isset($info->url_path) && !empty($info->url_path) && isset($this->config['host']) ? ($this->config['host'] . "/" . $info->url_path) : null,
+                'url_key'  => !empty($info) && isset($info->url_key) && !empty($info->url_key) ? $info->url_key : null,
+                'image'    => null,
+            ];
         }
 
         return $tree;
-    }*/
+    }
+
+    /**
+     * Calls SOAP client to return category info
+     * @param  [type] $categoryId [description]
+     * @return [type]             [description]
+     */
+    protected function getCategoryInfo($categoryId)
+    {
+        return $this->client->findCategory($categoryId);
+    }
+
+    /*
+    protected function findProductAditionalAttributes($setId, $type = 'simple')
+    {
+    return $this->client->findProductAditionalAttributes($setId, $type);
+    }
+
+    public function getProductTypes()
+    {
+    return isset($this->config['product_types']) ? $this->config['product_types'] : [];
+    }
+
+    public function getContestId()
+    {
+    return isset($this->config['contest_id']) ? $this->config['contest_id'] : null;
+    }
+
+     */
 
     /*public function getOrder($id)
     {
-        return $this->buildOrderInfo($this->client->findOrderInfo($id));
+    return $this->buildOrderInfo($this->client->findOrderInfo($id));
     }
 
     public function getOrdersWithoutBuild($fromDate, $toDate = null, $allStatus = false)
     {
-        $i = 0;
-        $groupByStatus = [];
-        $date = date('Y-m-d', strtotime($fromDate));
-        $toDate = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
+    $i = 0;
+    $groupByStatus = [];
+    $date = date('Y-m-d', strtotime($fromDate));
+    $toDate = is_null($toDate) ? date('Y-m-d') : date('Y-m-d', strtotime($toDate));
 
-        echo "Buscando desde {$date} al {$toDate}\n";
+    echo "Buscando desde {$date} al {$toDate}\n";
 
-        while ($date <= $toDate) {
-            $orders = $this->client->findOrders($date . " 00:00:00", $date . " 23:59:59");
+    while ($date <= $toDate) {
+    $orders = $this->client->findOrders($date . " 00:00:00", $date . " 23:59:59");
 
-            echo "Cantidad de ventas en el día {$date}: " . count($orders) . "\n";
+    echo "Cantidad de ventas en el día {$date}: " . count($orders) . "\n";
 
-            foreach ($orders as $order) {
-                if (($allStatus || in_array($order->status, $this->config['status'])) && (empty($this->config['store_id']) || $order->store_id == $this->config['store_id'])) {
-                    yield $order;
-                }
-            }
+    foreach ($orders as $order) {
+    if (($allStatus || in_array($order->status, $this->config['status'])) && (empty($this->config['store_id']) || $order->store_id == $this->config['store_id'])) {
+    yield $order;
+    }
+    }
 
-            $date = date('Y-m-d', strtotime($date . " +1 day"));
-        }
+    $date = date('Y-m-d', strtotime($date . " +1 day"));
+    }
     }*/
 
-    /*public function listProducts($from = null, $to = null)
-    {
-        return $this->client->listProducts($from, $to);
-    }
+    /*
 
-    public function getNewCustomers($from, $to = null)
-    {
-        return $this->getCustomers($from, $to, true);
-    }
+public function getNewCustomers($from, $to = null)
+{
+return $this->getCustomers($from, $to, true);
+}
 
-    public function findProductInfo($id, $field = 'sku')
-    {
-        return $this->client->findProductInfo($id, $field);
-    }
+public function findProductInfo($id, $field = 'sku')
+{
+return $this->client->findProductInfo($id, $field);
+}
 
-    public function getStockForProduct($id)
-    {
-        return $this->client->getStockForProduct($id);
-    }
+public function findProductAttributes($id)
+{
+return $this->client->findProductAttributes($id);
+}
 
-    public function getMediaForProduct($id)
-    {
-        return $this->client->getMediaForProduct($id);
-    }
+public function findProductAttributeSets()
+{
+return $this->client->findProductAttributeSets();
+}
 
-    public function findProductAttributes($id)
-    {
-        return $this->client->findProductAttributes($id);
-    }
-
-    public function findProductAttributeSets()
-    {
-        return $this->client->findProductAttributeSets();
-    }
-
-    public function findProductCustomOptions($id)
-    {
-        return $this->client->findProductCustomOptions($id);
-    }*/
+public function findProductCustomOptions($id)
+{
+return $this->client->findProductCustomOptions($id);
+}*/
 }
