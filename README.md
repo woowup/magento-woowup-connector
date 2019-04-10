@@ -95,5 +95,11 @@ $connector = new SoapConnector($magentoConfig, $logger, $woowUpClient);
 $connector->importCustomers(5);
 
 // Crear en WoowUp ventas en los status indicados creadas en Magento en los últimos 20 días
-$connector->importOrders(10);
+$connector->importOrders(20);
+
+// Crear/actualizar en WoowUp ventas creadas en los últimos 30 días
+$connector->importOrders(30, true);
+
+// Crear/actualizar en WoowUp productos creados en los últimos 2 meses
+$connector->importProducts(2);
 ```
