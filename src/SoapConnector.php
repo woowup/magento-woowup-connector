@@ -32,7 +32,7 @@ class SoapConnector
     const DEFAULT_ORDERS_DOWNLOAD_DAYS = 5;
 
     protected $sessionId;
-    protected $variations;
+    protected $variations = [];
     protected $productsInfo;
     protected $customersInfo;
     protected $connectionTime;
@@ -46,15 +46,13 @@ class SoapConnector
 
     public function __construct(array $config, $logger, $woowupClient)
     {
+        $this->logger         = $logger;
         $this->sessionId      = null;
         $this->connectionTime = null;
-        $this->config         = $config;
-        $this->variations     = explode(',', $config['variations']);
-        $this->productsInfo   = [];
-        $this->customersInfo  = [];
-        $this->branchName     = (isset($config['branchName']) && !empty($config['branchName'])) ? $config['branchName'] : self::DEFAULT_BRANCH_NAME;
+        $this->config         = $this->validateConfig($config);
+        $this->variations     = $this->config['variations'];
+        $this->branchName     = $this->config['branchName'];
         $this->client         = $this->getApiClient();
-        $this->logger         = $logger;
         $this->woowup         = new WoowUpHelper($woowupClient, $logger);
     }
 
@@ -112,7 +110,7 @@ class SoapConnector
         if (!$days) {
             $days = self::DEFAULT_ORDERS_DOWNLOAD_DAYS;
         }
-        $this->logger->info("Importing customers from $days days");
+        $this->logger->info("Importing orders from $days days");
         $fromDate = date('Y-m-d', strtotime("-$days days"));
 
         if (!empty($this->config['stores'])) {
@@ -250,7 +248,7 @@ class SoapConnector
             $date = date('Y-m-d', strtotime($date . " +1 day"));
         }
 
-        $this->logger->info("Statuses for the account " . $this->config['app_id'] . ": " . json_encode($this->config['status']));
+        $this->logger->info("Statuses for the account: " . json_encode($this->config['status']));
         $this->logger->info("Downloaded orders by status: " . json_encode($groupByStatus));
     }
 
@@ -1055,6 +1053,58 @@ class SoapConnector
     protected function getCategoryInfo($categoryId)
     {
         return $this->client->findCategory($categoryId);
+    }
+
+    protected function validateConfig($config)
+    {
+        $this->logger->info("Validating configuration");
+
+        if (!isset($config['host']) || empty($config['host'])) {
+            throw new \Exception("Field 'host' must be specified", 1);
+        }
+
+        if (!isset($config['apiuser']) || empty($config['apiuser'])) {
+            throw new \Exception("Field 'apiuser' must be specified", 1);
+        }
+
+        if (!isset($config['apikey']) || empty($config['apikey'])) {
+            throw new \Exception("Field 'apikey' must be specified", 1);
+        }
+
+        if (!isset($config['version']) || empty($config['version'])) {
+            throw new \Exception("Field 'version' must be specified", 1);
+        }
+
+        if (($config['version'] !== 1) && ($config['version'] !== 2)) {
+            throw new \Exception("Specified 'version' can be only 1 or 2", 1);
+        }
+
+        if (!isset($config['categories']) || empty($config['categories'])) {
+            $config['categories'] = false;
+            $this->logger->info("Categories sync disabled");
+        }
+
+        if (!isset($config['status']) || empty($config['status'])) {
+            $this->logger->info("No 'status' specified, default: " . self::STATUS_COMPLETE);
+            $config['status'] = array(self::STATUS_COMPLETE);
+        }
+
+        if (!isset($config['branchName']) || empty($config['branchName'])) {
+            $this->logger->info("No 'branchName' specified, default: " . self::DEFAULT_BRANCH_NAME);
+            $config['branchName'] = self::DEFAULT_BRANCH_NAME;
+        }
+
+        if (!isset($config['variations'])) {
+            $this->logger->info("No 'variations' specified");
+            $config['variations'] = [];
+        }
+
+        if (!isset($config['store_id'])) {
+            $this->logger->info("No 'store_id' specified");
+            $config['store_id'] = null;
+        }
+
+        return $config;
     }
 
     /*
