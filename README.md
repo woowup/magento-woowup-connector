@@ -65,26 +65,29 @@ $woowUpClient  = new WoowUpClient($woowUpApiKey, $woowUpHost, $woowUpVersion);
 
 // Configuración de magento
 $magentoConfig = [
-    // URL de la tienda
+    // URL de la tienda (obligatorio)
     'host'       => 'https://my-magento-store.com',
-    // Magento Api User
+    // Magento Api User (obligatorio)
     'apiuser'    => 'my-app-user',
-    // Magento Api key
+    // Magento Api key (obligatorio)
     'apikey'     => 'my-app-key',
-    // Version de Magento '1' o '2'
-    'version'    => '1',
-    // Estados de venta para descargar (array)
+    // Version de Magento 1 ó 2 (obligatorio)
+    'version'    => 1,
+    // Estados de venta para descargar (array opcional, default: complete) 
     'status'     => [
         'complete',
         'processing',
     ],
     // Stores ids para descargar (opcional, si no se incluye se consideran todas)
     'store_id'   => null,
-    // Nombre para la sucursal (si no se envía se considera 'MAGENTO')
+    // Nombre para la sucursal (opcional, default: 'MAGENTO')
     'branchName' => 'myMagentoBranch',
-    // Variaciones de producto separadas por coma
-    'variations' => 'talle,color',
-    // Booleana que indica si queremos sincronizar categorias
+    // Variaciones de producto a considerar (array opcional, si no se incluye no se consideran variaciones)
+    'variations' => [
+        'talle',
+        'color',
+    ],
+    // Booleana que indica si queremos sincronizar categorias (opcional, default: false)
     'categories' => true,
 ];
 
