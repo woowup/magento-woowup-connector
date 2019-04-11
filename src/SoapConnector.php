@@ -362,9 +362,13 @@ class SoapConnector
         $customer         = null;
         $magentoOrderInfo = $this->client->findOrderInfo($magentoOrder->increment_id);
 
+        // If the order has no customer_id it tries to build it straight from the order info
         if (isset($magentoOrder->customer_id)) {
             $magentoCustomer = $this->client->getCustomerInfo($magentoOrder->customer_id);
             $customer        = $this->buildCustomer($magentoCustomer);
+        } elseif (isset($magentoOrder->customer_email) || !empty(trim($magentoOrder->customer_email))) {
+            $this->logger->info("customer_id is NULL. Building customer from order");
+            $customer = $this->buildCustomerFromOrder($magentoOrder);
         }
 
         // Find document in payment info
@@ -476,6 +480,40 @@ class SoapConnector
         }
 
         return $order;
+    }
+
+    /**
+     * Builds customer directly from order
+     * @param  [type] $magentoOrder [description]
+     * @return [type]               [description]
+     */
+    protected function buildCustomerFromOrder($magentoOrder)
+    {
+        $customer = [
+            'email' => $magentoOrder->customer_email,
+        ];
+
+        //
+        if (isset($magentoOrder->customer_firstname) && !empty(trim($magentoOrder->customer_firstname))) {
+            $customer['first_name'] = ucwords(mb_strtolower(trim($magentoOrder->customer_firstname)));
+            if (isset($magentoOrder->customer_middlename) && !empty(trim($magentoOrder->customer_middlename))) {
+                $customer['first_name'] .= ' ' . ucwords(mb_strtolower(trim($magentoOrder->customer_middlename)));
+            }
+        }
+
+        if (isset($magentoOrder->customer_lastname) && !empty(trim($magentoOrder->customer_lastname))) {
+            $customer['last_name'] = ucwords(mb_strtolower(trim($magentoOrder->customer_lastname)));
+        }
+
+        if (isset($magentoOrder->customer_dob) && !empty(trim($magentoOrder->customer_dob))) {
+            $customer['birthdate'] = trim($magentoOrder->customer_dob);
+        }
+
+        if (isset($magentoOrder->customer_gender) && !empty(trim($magentoOrder->customer_gender)) && in_array(trim($magentoOrder->customer_gender), array("1", "2"))) {
+            $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
+        }
+
+        return $customer;
     }
 
     /**
