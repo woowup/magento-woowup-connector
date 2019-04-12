@@ -562,12 +562,12 @@ class SoapConnector
 
         // Birthdate
         if (isset($magentoCustomer->dob)) {
-            $customer['birthdate'] = trim($customer->dob);
+            $customer['birthdate'] = trim($magentoCustomer->dob);
         }
 
         // Gender
         if (isset($magentoCustomer->gender)) {
-            $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
+            $customer['gender'] = ($magentoCustomer->gender === "1") ? 'M' : (($magentoCustomer->gender === "2") ? 'F' : null);
         }
 
         // Group
