@@ -105,7 +105,7 @@ class SoapConnector
      * @param  boolean $update [description]
      * @return [type]          [description]
      */
-    public function importOrders($days = null, $update = false)
+    public function importOrders($days = null, $update = false, $importing = false)
     {
         if (!$days) {
             $days = self::DEFAULT_ORDERS_DOWNLOAD_DAYS;
@@ -122,7 +122,7 @@ class SoapConnector
         foreach ($stores as $store) {
             $this->setStore($store);
 
-            foreach ($this->getOrders($fromDate) as $order) {
+            foreach ($this->getOrders($fromDate, $importing) as $order) {
                 $this->woowup->upsertCustomer($order['customer']);
                 $this->woowup->upsertOrder($order, $update);
             }
@@ -205,7 +205,7 @@ class SoapConnector
      * @param  [type]  $toDate    [description]
      * @return [type]             [description]
      */
-    public function getOrders($fromDate, $toDate = null)
+    public function getOrders($fromDate, $toDate = null, $importing = false)
     {
         // Categorias
         $this->categories = $this->config['categories'] ? $this->getCategories() : [];
@@ -237,7 +237,7 @@ class SoapConnector
                 $groupByStatus[$magentoOrder->status]++;
 
                 if (in_array($magentoOrder->status, $this->config['status']) && (empty($this->config['store_id']) || $magentoOrder->store_id == $this->config['store_id'])) {
-                    $buildOrder = $this->buildOrder($magentoOrder);
+                    $buildOrder = $this->buildOrder($magentoOrder, $importing);
 
                     if ($buildOrder) {
                         yield $buildOrder;
@@ -354,7 +354,7 @@ class SoapConnector
      * @param  [type] $magentoOrder [description]
      * @return [type]               [description]
      */
-    protected function buildOrder($magentoOrder)
+    protected function buildOrder($magentoOrder, $importing = false)
     {
         $this->logger->info("Building order " . $magentoOrder->increment_id);
         $order = [];
@@ -437,6 +437,11 @@ class SoapConnector
                     ];
                 }
             }
+            foreach ($this->filters as $filter) {
+                if (method_exists($filter, 'filterVariations')) {
+                    $product['variations'] = $filter->filterVariations($product['variations']);
+                }
+            }
 
             // TO-DO agregar proceso de categorias
             if (!is_null($product) && $this->config['categories'] && isset($magentoProduct->category_ids) && count($magentoProduct->category_ids) > 0) {
@@ -448,7 +453,7 @@ class SoapConnector
 
         // createtime y approvedtime
         $order['createtime']   = $magentoOrder->created_at;
-        $order['approvedtime'] = date('c');
+        $order['approvedtime'] = $importing ? $magentoOrder->created_at : date('c');
 
         // tienda
         $order['branch_name'] = $this->branchName;
