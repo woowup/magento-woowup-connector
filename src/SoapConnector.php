@@ -437,6 +437,11 @@ class SoapConnector
                     ];
                 }
             }
+            foreach ($this->filters as $filter) {
+                if (method_exists($filter, 'filterVariations')) {
+                    $product['variations'] = $filter->filterVariations($product['variations']);
+                }
+            }
 
             // TO-DO agregar proceso de categorias
             if (!is_null($product) && $this->config['categories'] && isset($magentoProduct->category_ids) && count($magentoProduct->category_ids) > 0) {
