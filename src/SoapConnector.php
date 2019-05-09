@@ -205,7 +205,7 @@ class SoapConnector
      * @param  [type]  $toDate    [description]
      * @return [type]             [description]
      */
-    public function getOrders($fromDate, $toDate = null, $importing = false)
+    public function getOrders($fromDate, $importing = false, $toDate = null)
     {
         // Categorias
         $this->categories = $this->config['categories'] ? $this->getCategories() : [];
