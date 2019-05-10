@@ -802,6 +802,7 @@ class SoapConnector
         $imageUrl          = $this->_getImageUrl($id, $productInfo);
         $thumbnailUrl      = $this->_getThumbnailUrl($id, $productInfo);
         $price             = isset($productInfo->price) && !is_null($productInfo->price) ? (float) $productInfo->price : null;
+        $offerPrice        = $this->_getOfferPrice($productInfo);
         $productCategories = null;
 
         $sku = $productInfo->sku;
@@ -1148,6 +1149,15 @@ class SoapConnector
         }
 
         return $config;
+    }
+
+    protected function _getOfferPrice($productInfo)
+    {
+        if (isset($productInfo->special_price) && !is_null($productInfo->special_price)) {
+            return $productInfo->special_price;
+        }
+
+        return null;
     }
 
     /*
