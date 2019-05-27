@@ -148,8 +148,26 @@ class SoapConnector
     public function importProducts(int $months = 6)
     {
         $this->logger->info("Importing products from $months months");
+        $updatedSkus = [];
         foreach ($this->getProducts($months) as $product) {
             $this->woowup->upsertProduct($product);
+            $updatedSkus[] = $product['sku'];
+        }
+
+        // Actualizo los que no están más disponibles
+        $this->logger->info("Searching unavailable products in woowup");
+        $page = 0; $limit = 100;
+        foreach ($this->woowup->searchProducts(['with_stock' => true]) as $wuProduct) {
+            // Si el producto no está en VTEX lo deshabilito
+            if (!in_array($wuProduct->sku, $updatedSkus)) {
+                $this->logger->info("Product " . $wuProduct->sku . " no longer available");
+                $this->woowup->upsertProduct([
+                    'sku'       => $wuProduct->sku,
+                    'name'      => $wuProduct->name,
+                    'available' => false,
+                    'stock'     => 0,
+                ]);
+            }
         }
 
         $stats = $this->woowup->getApiStats();
@@ -157,6 +175,7 @@ class SoapConnector
         $this->logger->info("Created products: " . $stats['products']['created']);
         $this->logger->info("Updated products: " . $stats['products']['updated']);
         $this->logger->info("Failed products: " . count($stats['products']['failed']));
+
     }
 
     /**

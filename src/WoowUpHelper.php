@@ -166,4 +166,32 @@ class WoowUpHelper
             $this->_logger->info("Unexistent entity $entity");
         }
     }
+
+    public function searchProducts($search = [])
+    {
+        $page = 0;
+        $limit = 100;
+
+        do {
+            $this->_logger->info("Page $page");
+            try {
+                $products = $this->_woowupClient->products->search($search, $page, $limit);
+                foreach ($products as $product) {
+                    yield $product;
+                }
+            } catch (\Exception $e) {
+                if (method_exists($e, 'getResponse')) {
+                    $response     = json_decode($e->getResponse()->getBody(), true);
+                    $errorCode    = $response['code'];
+                    $errorMessage = $response['payload']['errors'][0];
+                } else {
+                    $errorCode    = $e->getCode();
+                    $errorMessage = $e->getMessage();
+                }
+                $this->_logger->info("[Search products] Error:  Code '" . $errorCode . "', Message '" . $errorMessage . "'");
+            }
+
+            $page++;
+        } while (!empty($products));
+    }
 }
