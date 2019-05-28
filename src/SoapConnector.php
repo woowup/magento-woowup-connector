@@ -87,7 +87,7 @@ class SoapConnector
             $failedCustomers = $stats['customers']['failed'];
             $this->woowup->resetFailed('customers');
             foreach ($failedCustomers as $customer) {
-                $this->upsertCustomer($customer);
+                $this->woowup->upsertCustomer($customer);
             }
         }
 
