@@ -31,6 +31,8 @@ class SoapConnector
 
     const DEFAULT_ORDERS_DOWNLOAD_DAYS = 5;
 
+    const DEFAULT_CATEGORIES_FIELD = 'category_ids';
+
     protected $sessionId;
     protected $variations = [];
     protected $productsInfo;
@@ -43,8 +45,9 @@ class SoapConnector
     protected $config;
     protected $categories;
     protected $filters = [];
+    protected $categoriesField;
 
-    public function __construct(array $config, $logger, $woowupClient)
+    public function __construct($privateConfig, $connection, array $config, $logger, $woowupClient)
     {
         $this->logger         = $logger;
         $this->sessionId      = null;
@@ -54,6 +57,8 @@ class SoapConnector
         $this->branchName     = $this->config['branchName'];
         $this->client         = $this->getApiClient();
         $this->woowup         = new WoowUpHelper($woowupClient, $logger);
+
+        $this->categoriesField = (isset($privateConfig[$connection['app_id']]['categories_field'])) ? $privateConfig[$connection['app_id']]['categories_field'] : self::DEFAULT_CATEGORIES_FIELD;
     }
 
     /**
@@ -463,8 +468,8 @@ class SoapConnector
             }
 
             // TO-DO agregar proceso de categorias
-            if (!is_null($product) && $this->config['categories'] && isset($magentoProduct->category_ids) && count($magentoProduct->category_ids) > 0) {
-                $product['category'] = $this->buildProductCategory($magentoProduct->category_ids);
+            if (!is_null($product) && $this->config['categories'] && isset($magentoProduct->{$this->categoriesField}) && count($magentoProduct->{$this->categoriesField}) > 0) {
+                $product['category'] = $this->buildProductCategory($magentoProduct->{$this->categoriesField});
             }
 
             $order['purchase_detail'][] = $product;
@@ -842,8 +847,8 @@ class SoapConnector
             'available'     => ($inStock && $isAvailable),
         ];
 
-        if ($this->config['categories'] && isset($productInfo->category_ids) && !empty($productInfo->category_ids)) {
-            $product['category'] = $this->buildProductCategory($productInfo->category_ids);
+        if ($this->config['categories'] && isset($productInfo->{$this->categoriesField}) && !empty($productInfo->{$this->categoriesField})) {
+            $product['category'] = $this->buildProductCategory($productInfo->{$this->categoriesField});
         }
 
         $product['url'] = $this->_getUrl($productInfo, $productCategories);
