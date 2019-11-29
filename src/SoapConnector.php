@@ -33,6 +33,8 @@ class SoapConnector
 
     const DEFAULT_CATEGORIES_FIELD = 'category_ids';
 
+    const DEFAULT_URL_FIELD = 'url_path';
+
     protected $sessionId;
     protected $variations = [];
     protected $productsInfo;
@@ -46,6 +48,7 @@ class SoapConnector
     protected $categories;
     protected $filters = [];
     protected $categoriesField;
+    protected $urlField;
 
     public function __construct($privateConfig, $connection, array $config, $logger, $woowupClient)
     {
@@ -59,6 +62,8 @@ class SoapConnector
         $this->woowup         = new WoowUpHelper($woowupClient, $logger);
 
         $this->categoriesField = (isset($privateConfig[$connection['app_id']]['categories_field'])) ? $privateConfig[$connection['app_id']]['categories_field'] : self::DEFAULT_CATEGORIES_FIELD;
+
+        $this->urlField = (isset($privateConfig[$connection['app_id']]['url_field'])) ? $privateConfig[$connection['app_id']]['url_field'] : self::DEFAULT_URL_FIELD;
     }
 
     /**
@@ -1044,7 +1049,7 @@ class SoapConnector
      */
     protected function _getUrl($productInfo, $productCategories = null)
     {
-        $url = isset($productInfo->url_path) ? $productInfo->url_path : null;
+        $url = isset($productInfo->{$this->urlField}) ? $productInfo->{$this->urlField} : null;
 
         $url = $this->config['host'] . '/' . $url;
 
