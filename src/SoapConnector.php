@@ -852,6 +852,10 @@ class SoapConnector
             'available'     => ($inStock && $isAvailable),
         ];
 
+        if ($offerPrice !== null) {
+            $product['offer_price'] = (float) $offerPrice;
+        }
+
         if ($this->config['categories'] && isset($productInfo->{$this->categoriesField}) && !empty($productInfo->{$this->categoriesField})) {
             $product['category'] = $this->buildProductCategory($productInfo->{$this->categoriesField});
         }
