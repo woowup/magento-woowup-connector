@@ -61,7 +61,7 @@ class WoowUpHelper
                         break;
                     default:
                         $errorCode    = $response['code'];
-                        $errorMessage = $response['payload']['errors'][0];
+                        $errorMessage = $response['payload']['errors'][0] ?? $response['message'];
                         break;
                 }
             } else {
@@ -95,7 +95,7 @@ class WoowUpHelper
             if (method_exists($e, 'getResponse')) {
                 $response     = json_decode($e->getResponse()->getBody(), true);
                 $errorCode    = $response['code'];
-                $errorMessage = $response['payload']['errors'][0];
+                $errorMessage = $response['payload']['errors'][0] ?? $response['message'];
             } else {
                 $errorCode    = $e->getCode();
                 $errorMessage = $e->getMessage();
@@ -137,7 +137,7 @@ class WoowUpHelper
                     }
                 } else {
                     $errorCode    = $response['code'];
-                    $errorMessage = $response['payload']['errors'][0];
+                    $errorMessage = $response['payload']['errors'][0] ?? $response['message'];
                 }
             } else {
                 $errorCode    = $e->getCode();
@@ -183,7 +183,7 @@ class WoowUpHelper
                 if (method_exists($e, 'getResponse')) {
                     $response     = json_decode($e->getResponse()->getBody(), true);
                     $errorCode    = $response['code'];
-                    $errorMessage = $response['payload']['errors'][0];
+                    $errorMessage = $response['payload']['errors'][0] ?? $response['message'];
                 } else {
                     $errorCode    = $e->getCode();
                     $errorMessage = $e->getMessage();
