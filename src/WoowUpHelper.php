@@ -170,10 +170,10 @@ class WoowUpHelper
     {
         if ($entity === null) {
             foreach ($this->_woowupStats as $entityKey => $stats) {
-                $this->_woowupStats[$entityKey]['failed'] = 0;
+                $this->_woowupStats[$entityKey]['failed'] = [];
             }
         } elseif (isset($this->_woowupStats[$entity])) {
-            $this->_woowupStats[$entity]['failed'] = 0;
+            $this->_woowupStats[$entity]['failed'] = [];
         } else {
             $this->_logger->info("Unexistent entity $entity");
         }
