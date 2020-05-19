@@ -422,6 +422,8 @@ class SoapConnector
             $order['email'] = $customer['email'];
         }
 
+        $order['channel'] = 'web';
+
         $order['purchase_detail'] = [];
         foreach ($magentoOrderInfo->items as $item) {
             if (!isset($item->sku)) {
