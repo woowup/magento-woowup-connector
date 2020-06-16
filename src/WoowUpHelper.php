@@ -61,7 +61,11 @@ class WoowUpHelper
                         break;
                     default:
                         $errorCode    = $response['code'];
-                        $errorMessage = $response['payload']['errors'][0];
+                        if (isset($response['payload']['errors']) && isset($response['payload']['errors'][0])) {
+                            $errorMessage = $response['payload']['errors'][0];
+                        } else {
+                            $errorMessage = $response['message'];
+                        }
                         break;
                 }
             } else {
@@ -95,7 +99,11 @@ class WoowUpHelper
             if (method_exists($e, 'getResponse')) {
                 $response     = json_decode($e->getResponse()->getBody(), true);
                 $errorCode    = $response['code'];
-                $errorMessage = $response['payload']['errors'][0];
+                if (isset($response['payload']['errors']) && isset($response['payload']['errors'][0])) {
+                    $errorMessage = $response['payload']['errors'][0];
+                } else {
+                    $errorMessage = $response['message'];
+                }
             } else {
                 $errorCode    = $e->getCode();
                 $errorMessage = $e->getMessage();
@@ -137,7 +145,11 @@ class WoowUpHelper
                     }
                 } else {
                     $errorCode    = $response['code'];
-                    $errorMessage = $response['payload']['errors'][0];
+                    if (isset($response['payload']['errors']) && isset($response['payload']['errors'][0])) {
+                        $errorMessage = $response['payload']['errors'][0];
+                    } else {
+                        $errorMessage = $response['message'];
+                    }
                 }
             } else {
                 $errorCode    = $e->getCode();
@@ -158,10 +170,10 @@ class WoowUpHelper
     {
         if ($entity === null) {
             foreach ($this->_woowupStats as $entityKey => $stats) {
-                $this->_woowupStats[$entityKey]['failed'] = 0;
+                $this->_woowupStats[$entityKey]['failed'] = [];
             }
         } elseif (isset($this->_woowupStats[$entity])) {
-            $this->_woowupStats[$entity]['failed'] = 0;
+            $this->_woowupStats[$entity]['failed'] = [];
         } else {
             $this->_logger->info("Unexistent entity $entity");
         }
@@ -183,7 +195,11 @@ class WoowUpHelper
                 if (method_exists($e, 'getResponse')) {
                     $response     = json_decode($e->getResponse()->getBody(), true);
                     $errorCode    = $response['code'];
-                    $errorMessage = $response['payload']['errors'][0];
+                    if (isset($response['payload']['errors']) && isset($response['payload']['errors'][0])) {
+                        $errorMessage = $response['payload']['errors'][0];
+                    } else {
+                        $errorMessage = $response['message'];
+                    }
                 } else {
                     $errorCode    = $e->getCode();
                     $errorMessage = $e->getMessage();
