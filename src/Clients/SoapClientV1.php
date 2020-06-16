@@ -15,8 +15,9 @@ class SoapClientV1 extends SoapClientAbstract implements ClientInterface
     protected $customersInfo;
     protected $connectionTime;
     protected $config;
+    protected $logger;
 
-    function __construct(array $config)
+    function __construct(array $config, $logger)
     {
         $this->sessionId = null;
         $this->client = null;
@@ -25,6 +26,7 @@ class SoapClientV1 extends SoapClientAbstract implements ClientInterface
         $this->variations = [];
         $this->productsInfo = [];
         $this->customersInfo = [];
+        $this->logger = $logger;
 
         // convierto los PHP Errors a excepciones
         set_error_handler([$this, 'phpErrorHandler']);
