@@ -712,7 +712,7 @@ class SoapConnector
 
         switch ($this->config['version']) {
             case 1:
-                return new SoapClientV1($this->config);
+                return new SoapClientV1($this->config, $this->logger);
                 break;
             case 2:
                 return new SoapClientV2($this->config);
