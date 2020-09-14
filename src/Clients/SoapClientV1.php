@@ -94,9 +94,9 @@ class SoapClientV1 extends SoapClientAbstract implements ClientInterface
                     $customerAddress = $this->retryCall(function () use ($addressId) {
                         return json_decode(json_encode($this->client->call($this->sessionId, 'customer_address.info', $addressId)));
                     });
-                }
 
-                $customerInfo->addressInfo = $customerAddress;
+                    $customerInfo->addressInfo = $customerAddress;
+                }
 
                 $this->customersInfo[$customerId] = $customerInfo;
             } catch (\SoapFault $e) {
