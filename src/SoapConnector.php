@@ -570,11 +570,15 @@ class SoapConnector
     {
         // Email, first name and last name
         $customer = [
-            'email'      => mb_strtolower(trim($magentoCustomer->email)),
             'first_name' => ucwords(mb_strtolower(trim($magentoCustomer->firstname))),
             'last_name'  => ucwords(mb_strtolower(trim($magentoCustomer->lastname))),
             'tags'       => self::CUSTOMER_TAG,
         ];
+
+        // Email
+        if (isset($magentoCustomer->email) && !empty(trim($magentoCustomer->email))) {
+            $customer['email'] = mb_strtolower(trim($magentoCustomer->email));
+        }
 
         // Document
         if (isset($magentoCustomer->dni) && ($document = $this->validDocument($magentoCustomer->dni))) {
@@ -1193,6 +1197,11 @@ class SoapConnector
         }
 
         return null;
+    }
+
+    public function importCarts($createdFrom, $createdTo)
+    {
+        //
     }
 
     /*
