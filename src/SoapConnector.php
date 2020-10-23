@@ -64,6 +64,14 @@ class SoapConnector
         $this->categoriesField = (isset($privateConfig[$connection['app_id']]['categories_field'])) ? $privateConfig[$connection['app_id']]['categories_field'] : self::DEFAULT_CATEGORIES_FIELD;
 
         $this->urlField = (isset($privateConfig[$connection['app_id']]['url_field'])) ? $privateConfig[$connection['app_id']]['url_field'] : self::DEFAULT_URL_FIELD;
+
+        $privateConfig = $privateConfig[$config['app_id']];
+
+        if (isset($privateConfig['filters']) && is_array($privateConfig['filters']) && !empty($privateConfig['filters'])) {
+            foreach ($privateConfig['filters'] as $filterClass) {
+                $this->addFilter(new $filterClass());
+            }
+        }
     }
 
     /**
@@ -513,6 +521,9 @@ class SoapConnector
             if (method_exists($filter, 'getPurchasePoints')) {
                 $order['points'] = $filter->getPurchasePoints($order);
             }
+            if (method_exists($filter, 'getStoreName')) {
+                $order['branch_name'] = $filter->getStoreName($magentoOrder);
+            }
         }
 
         return $order;
@@ -547,6 +558,12 @@ class SoapConnector
 
         if (isset($magentoOrder->customer_gender) && !empty(trim($magentoOrder->customer_gender)) && in_array(trim($magentoOrder->customer_gender), array("1", "2"))) {
             $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
+        }
+
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'getCustomerCustomAttributes')) {
+                $customer['custom_attributes'] = $filter->getCustomerCustomAttributes($magentoOrder);
+            }
         }
 
         return $customer;
@@ -613,6 +630,13 @@ class SoapConnector
         // Group
         if (isset($magentoCustomer->group_id) && !empty($magentoCustomer->group_id)) {
             $customer['tags'] .= ",group" . $magentoCustomer->group_id;
+        }
+
+        // Custom Attributes
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'getCustomerCustomAttributes')) {
+                $customer['custom_attributes'] = $filter->getCustomerCustomAttributes($magentoCustomer);
+            }
         }
 
         // Clean empty values
@@ -797,6 +821,7 @@ class SoapConnector
      */
     protected function buildProduct($id, $type, $productInfo)
     {
+        $product = [];
         if (empty($productInfo) || empty($productInfo->sku)) {
             $this->logger->info("Product not found for sku #{$id}");
             return null;
@@ -845,15 +870,18 @@ class SoapConnector
             if (method_exists($filter, 'filterSku')) {
                 $sku = $filter->filterSku($sku);
             }
+            if (method_exists($filter, 'getCustomAttributes')) {
+                $product['custom_attributes'] = $filter->getCustomAttributes($productInfo);
+            }
         }
 
-        $product = [
+        $product += [
             'sku'           => $sku,
             'name'          => $productInfo->name,
             'description'   => $description,
             'price'         => $price,
-            'image_url'     => $imageUrl,
-            'thumbnail_url' => $thumbnailUrl,
+            'image_url'     => $imageUrl ? $imageUrl : '',
+            'thumbnail_url' => $thumbnailUrl ? $thumbnailUrl : '',
             'stock'         => $stockQuantity,
             'available'     => ($inStock && $isAvailable),
         ];
