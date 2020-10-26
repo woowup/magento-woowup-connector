@@ -448,6 +448,8 @@ class SoapConnector
                 }
             }
 
+            $imageUrl = $this->_getImageUrl($item->sku, $magentoProduct);
+
             $product = [
                 'sku'          => $sku,
                 'product_name' => isset($item->name) ? ucwords(mb_strtolower(trim($item->name))) : '',
@@ -455,7 +457,7 @@ class SoapConnector
                 'unit_price'   => (float) $item->price,
                 'variations'   => [],
                 'url'          => $this->_getUrl($magentoProduct),
-                'image_url'    => $this->_getImageUrl($item->sku, $magentoProduct),
+                'image_url'    => $imageUrl ? $imageUrl : '',
             ];
 
             if ($product['quantity'] == 0) {
