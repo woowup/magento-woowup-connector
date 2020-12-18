@@ -870,6 +870,7 @@ class SoapConnector
         $productCategories = null;
 
         $sku = $productInfo->sku;
+        $parentSku = '';
         foreach ($this->filters as $filter) {
             if (method_exists($filter, 'filterSku')) {
                 $sku = $filter->filterSku($sku);
@@ -877,6 +878,15 @@ class SoapConnector
             if (method_exists($filter, 'getCustomAttributes')) {
                 $product['custom_attributes'] = $filter->getCustomAttributes($productInfo);
             }
+            if (method_exists($filter, 'getParentSku')) {
+                $parentSku = $filter->getParentSku($sku);
+            }
+        }
+
+        if ($parentSku && !empty($parentSku)) {
+            $parentInfo = $this->findProductInfo($parentSku);
+            $imageUrl = $this->_getImageUrl($parentSku, $productInfo);
+            $thumbnailUrl = $this->_getThumbnailUrl($parentSku, $productInfo);
         }
 
         $product += [
@@ -898,7 +908,11 @@ class SoapConnector
             $product['category'] = $this->buildProductCategory($productInfo->{$this->categoriesField});
         }
 
-        $product['url'] = $this->_getUrl($productInfo, $productCategories);
+        if ($parentSku && !empty($parentSku)) {
+            $product['url'] = $this->_getUrl($parentInfo, $productCategories);
+        } else {
+            $product['url'] = $this->_getUrl($productInfo, $productCategories);
+        }
 
         return $product;
     }
