@@ -65,11 +65,13 @@ class SoapConnector
 
         $this->urlField = (isset($privateConfig[$connection['app_id']]['url_field'])) ? $privateConfig[$connection['app_id']]['url_field'] : self::DEFAULT_URL_FIELD;
 
-        $privateConfig = $privateConfig[$config['app_id']];
+        if (isset($config['app_id']) && isset($privateConfig[$config['app_id']])) {
+            $privateConfig = $privateConfig[$config['app_id']];
 
-        if (isset($privateConfig['filters']) && is_array($privateConfig['filters']) && !empty($privateConfig['filters'])) {
-            foreach ($privateConfig['filters'] as $filterClass) {
-                $this->addFilter(new $filterClass());
+            if (isset($privateConfig['filters']) && is_array($privateConfig['filters']) && !empty($privateConfig['filters'])) {
+                foreach ($privateConfig['filters'] as $filterClass) {
+                    $this->addFilter(new $filterClass());
+                }
             }
         }
     }
