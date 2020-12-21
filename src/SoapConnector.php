@@ -910,6 +910,9 @@ class SoapConnector
 
         if ($parentSku && !empty($parentSku)) {
             $product['url'] = $this->_getUrl($parentInfo, $productCategories);
+            if (!isset($product['category']) && $this->config['categories'] && isset($parentInfo->{$this->categoriesField}) && !empty($parentInfo->{$this->categoriesField})) {
+                $product['category'] = $this->buildProductCategory($parentInfo->{$this->categoriesField});
+            }
         } else {
             $product['url'] = $this->_getUrl($productInfo, $productCategories);
         }
@@ -1112,6 +1115,9 @@ class SoapConnector
         foreach ($this->filters as $filter) {
             if (method_exists($filter, 'filterUrl')) {
                 $url = $filter->filterUrl($url);
+            }
+            if (method_exists($filter, 'getUrl')) {
+                $url = $filter->getUrl($productInfo);
             }
         }
 
