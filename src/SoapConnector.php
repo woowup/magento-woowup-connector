@@ -93,7 +93,9 @@ class SoapConnector
         }
 
         foreach ($stores as $store) {
-            $this->setStore($store);
+            if ($store) {
+                $this->setStore($store);
+            }
 
             foreach ($this->getCustomers($fromDate) as $customer) {
                 $this->woowup->upsertCustomer($customer);
@@ -140,7 +142,9 @@ class SoapConnector
         }
 
         foreach ($stores as $store) {
-            $this->setStore($store);
+            if ($store) {
+                $this->setStore($store);
+            }
 
             foreach ($this->getOrders($fromDate, $importing) as $order) {
                 $this->woowup->upsertCustomer($order['customer']);
@@ -400,6 +404,15 @@ class SoapConnector
 
         $customer         = null;
         $magentoOrderInfo = $this->client->findOrderInfo($magentoOrder->increment_id);
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'filterOrders')) {
+                $magentoOrderInfo = $filter->filterOrders($magentoOrderInfo, $this->config['store_id']);
+                if (!$magentoOrderInfo) {
+                    $this->logger->info("Store id doesnt match");
+                    return null;
+                }
+            }
+        }
 
         // If the order has no customer_id it tries to build it straight from the order info
         if (isset($magentoOrder->customer_id)) {
@@ -589,6 +602,16 @@ class SoapConnector
      */
     protected function buildCustomer($magentoCustomer)
     {
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'filterCustomers')) {
+                $magentoCustomer = $filter->filterCustomers($magentoCustomer, $this->config['store_id']);
+                if (!$magentoCustomer) {
+                    $this->logger->info("Store id doesnt match");
+                    return null;
+                }
+            }
+        }
+
         // Email, first name and last name
         $customer = [
             'first_name' => ucwords(mb_strtolower(trim($magentoCustomer->firstname))),
@@ -826,6 +849,17 @@ class SoapConnector
     protected function buildProduct($id, $type, $productInfo)
     {
         $product = [];
+
+        foreach ($this->filters as $filter) {
+            if (method_exists($filter, 'filterProducts')) {
+                $productInfo = $filter->filterProducts($productInfo, $this->config['store_id']);
+                if (!$productInfo) {
+                    $this->logger->info("Store id doesnt match");
+                    return null;
+                }
+            }
+        }
+
         if (empty($productInfo) || empty($productInfo->sku)) {
             $this->logger->info("Product not found for sku #{$id}");
             return null;
