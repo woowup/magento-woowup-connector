@@ -93,7 +93,9 @@ class SoapConnector
         }
 
         foreach ($stores as $store) {
-            $this->setStore($store);
+            if ($store) {
+                $this->setStore($store);
+            }
 
             foreach ($this->getCustomers($fromDate) as $customer) {
                 $this->woowup->upsertCustomer($customer);
@@ -140,7 +142,9 @@ class SoapConnector
         }
 
         foreach ($stores as $store) {
-            $this->setStore($store);
+            if ($store) {
+                $this->setStore($store);
+            }
 
             foreach ($this->getOrders($fromDate, $importing) as $order) {
                 $this->woowup->upsertCustomer($order['customer']);
