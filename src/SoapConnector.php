@@ -915,6 +915,9 @@ class SoapConnector
             if (method_exists($filter, 'getParentSku')) {
                 $parentSku = $filter->getParentSku($sku);
             }
+            if (method_exists($filter, 'getBrand')) {
+                $product['brand'] = $filter->getBrand($productInfo);
+            }
         }
 
         if ($parentSku && !empty($parentSku)) {
