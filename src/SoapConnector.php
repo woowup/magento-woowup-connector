@@ -918,9 +918,21 @@ class SoapConnector
         }
 
         if ($parentSku && !empty($parentSku)) {
-            $parentInfo = $this->findProductInfo($parentSku);
-            $imageUrl = $this->_getImageUrl($parentSku, $productInfo);
+            $parentInfo   = $this->findProductInfo($parentSku);
+            $imageUrl     = $this->_getImageUrl($parentSku, $productInfo);
             $thumbnailUrl = $this->_getThumbnailUrl($parentSku, $productInfo);
+            $inStock      = $this->_isVisible($parentInfo);
+            $isAvailable  = $this->_isAvailable($parentInfo);
+            if ($inStock && $isAvailable && $stockQuantity == 0) {
+                $stockInfo = $this->getStockForProduct($parentSku);
+                if (!empty($stockInfo)) {
+                    $stockQuantity = (int) $stockInfo[0]->qty;
+                    $inStock       = (boolean) $stockInfo[0]->is_in_stock;
+                    if ($inStock && $stockQuantity == 0) {
+                        $stockQuantity = 1;
+                    }
+                }
+            }
         }
 
         $product += [
