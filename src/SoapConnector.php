@@ -327,11 +327,11 @@ class SoapConnector
             }
 
             $mgProducts = $this->listProducts($from . " 00:00:00", $to . " 23:59:59");
-            $total      = count($mgProducts);
 
             if (empty($mgProducts)) {
                 $this->logger->info("No products for the period");
             } else {
+                $total = count($mgProducts);
                 $this->logger->info("Magento products count: " . $total);
 
                 foreach ($mgProducts as $mgProduct) {
@@ -602,6 +602,9 @@ class SoapConnector
      */
     protected function buildCustomer($magentoCustomer)
     {
+        if (is_null($magentoCustomer)) {
+            return null;
+        }
         foreach ($this->filters as $filter) {
             if (method_exists($filter, 'filterCustomers')) {
                 $magentoCustomer = $filter->filterCustomers($magentoCustomer, $this->config['store_id']);
