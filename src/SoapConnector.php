@@ -574,7 +574,8 @@ class SoapConnector
         }
 
         if (isset($magentoOrder->customer_gender) && !empty(trim($magentoOrder->customer_gender)) && in_array(trim($magentoOrder->customer_gender), array("1", "2"))) {
-            $customer['gender'] = ($customer->gender === "1") ? 'M' : (($customer->gender === "2") ? 'F' : null);
+            $gender = trim($magentoOrder->customer_gender);
+            $customer['gender'] = ($gender === "1") ? 'M' : (($gender === "2") ? 'F' : null);
         }
 
         foreach ($this->filters as $filter) {
