@@ -79,30 +79,46 @@ class SoapClientV2 extends SoapClientAbstract implements ClientInterface
             $this->checkReconnect();
 
             try {
-                $customerInfo = $this->retryCall(function () use ($customerId) {
-                    return $this->client->customerCustomerInfo($this->sessionId, $customerId);
-                });
-
-                $hasAddress = (isset($customerInfo->default_shipping) && !empty($customerInfo->default_shipping)) || (isset($customerInfo->default_billing) && !empty($customerInfo->default_billing));
-                $customerAddress = null;
-
-                if ($customerInfo && $hasAddress) {
-                    $addressId = isset($customerInfo->default_billing) ? $customerInfo->default_billing : $customerInfo->default_shipping;
-
-                    $customerAddress = $this->retryCall(function () use ($addressId) {
-                        return json_decode(json_encode($this->client->call($this->sessionId, 'customer_address.info', $addressId)));
-                    });
-                }
-
-                $customerInfo->addressInfo = $customerAddress;
-
-                $this->customersInfo[$customerId] = $customerInfo;
+                $customerInfo = $this->retryCall(
+                    function () use ($customerId) {
+                        return $this->client->customerCustomerInfo($this->sessionId, $customerId);
+                    }
+                );
             } catch (\SoapFault $e) {
-                \LogService::save('mg-err', "error al buscar la info del customer " . $customerId . " | " . $e->getMessage(), $e);
+                \LogService::save(
+                    'mg-err',
+                    "error al buscar la info del customer " . $customerId . " | " . $e->getMessage(),
+                    $e
+                );
                 return null;
             }
-        }
 
+            $hasAddress = (isset($customerInfo->default_shipping) && !empty($customerInfo->default_shipping)) || (isset($customerInfo->default_billing) && !empty($customerInfo->default_billing));
+            $customerAddress = null;
+
+            if ($customerInfo && $hasAddress) {
+                $addressId = isset($customerInfo->default_billing) ? $customerInfo->default_billing : $customerInfo->default_shipping;
+                try {
+                    $customerAddress = $this->retryCall(
+                        function () use ($addressId) {
+                            return json_decode(
+                                json_encode($this->client->call($this->sessionId, 'customer_address.info', $addressId))
+                            );
+                        }
+                    );
+                } catch (\SoapFault $e) {
+                    \LogService::save(
+                        'mg-err',
+                        "error al buscar la info del customer " . $customerId . " | " . $e->getMessage(),
+                        $e
+                    );
+                }
+            }
+            if ($customerInfo && !isset($customerInfo->addressInfo) && !is_null($customerAddress)) {
+                $customerInfo->addressInfo = $customerAddress;
+            }
+            $this->customersInfo[$customerId] = $customerInfo;
+        }
         return $this->customersInfo[$customerId];
     }
 
