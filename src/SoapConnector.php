@@ -426,7 +426,10 @@ class SoapConnector
         // Find document in payment info
         if (!isset($customer['document']) && isset($magentoOrderInfo->payment) && !empty($magentoOrderInfo->payment)) {
             $payment = $magentoOrderInfo->payment;
-            if (isset($payment->additional_information) && isset($payment->additional_information->docNumber) && !empty($payment->additional_information->docNumber)) {
+            if (isset($payment->additional_information)
+                && isset($payment->additional_information->docNumber) && !empty($payment->additional_information->docNumber)
+                && isset($payment->additional_information->docType) && !empty($payment->additional_information->docType)
+            ) {
                 $customer['document']      = trim($payment->additional_information->docNumber);
                 $customer['document_type'] = trim($payment->additional_information->docType);
             }
