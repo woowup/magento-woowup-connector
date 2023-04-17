@@ -28,8 +28,9 @@ abstract class SoapClientAbstract
                     throw $e;
                 }
 
-                echo 'Intento '.$intents.' fallido. Reintentando en '.pow(self::EXPONENTIAL_RETRY_BASE, $intents).' segundos'.PHP_EOL;
-                sleep(pow(self::EXPONENTIAL_RETRY_BASE, $intents));
+                $secondsToWait = pow(self::EXPONENTIAL_RETRY_BASE, $intents);
+                echo "Intento $intents fallido. Reintentando en $secondsToWait segundos".PHP_EOL;
+                sleep(pow($secondsToWait));
 
                 if ($intents == self::MAX_INTENTS) {
                     throw $e;
