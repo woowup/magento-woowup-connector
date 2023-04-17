@@ -30,7 +30,7 @@ abstract class SoapClientAbstract
 
                 $secondsToWait = pow(self::EXPONENTIAL_RETRY_BASE, $intents);
                 echo "Intento $intents fallido. Reintentando en $secondsToWait segundos".PHP_EOL;
-                sleep(pow($secondsToWait));
+                sleep($secondsToWait);
 
                 if ($intents == self::MAX_INTENTS) {
                     throw $e;
