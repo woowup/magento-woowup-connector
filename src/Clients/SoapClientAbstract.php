@@ -24,7 +24,7 @@ abstract class SoapClientAbstract
             } catch (\SoapFault $e) {
                 $intents++;
 
-                if(strpos($e->getMessage(), 'not exists.') === false){
+                if ($e->getCode() === 0 && strpos($e->getMessage(), 'not exists.') === false) {
                     throw $e;
                 }
 
