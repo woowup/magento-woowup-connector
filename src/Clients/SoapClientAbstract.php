@@ -13,7 +13,7 @@ abstract class SoapClientAbstract
     /**
      * Cantidad máxima de intentos
      */
-    const MAX_INTENTS = 5;
+    const MAX_INTENTS = 3;
 
     protected function retryCall($callback)
     {
@@ -24,7 +24,13 @@ abstract class SoapClientAbstract
             } catch (\SoapFault $e) {
                 $intents++;
 
-                sleep(pow(self::EXPONENTIAL_RETRY_BASE, $intents));
+                if ($e->getCode() === 0 && strpos($e->getMessage(), 'not exists.') === false) {
+                    throw $e;
+                }
+
+                $secondsToWait = pow(self::EXPONENTIAL_RETRY_BASE, $intents);
+                echo "Intento $intents fallido. Reintentando en $secondsToWait segundos".PHP_EOL;
+                sleep(pow($secondsToWait));
 
                 if ($intents == self::MAX_INTENTS) {
                     throw $e;

@@ -127,13 +127,17 @@ class SoapConnector
      * @param  boolean $update [description]
      * @return [type]          [description]
      */
-    public function importOrders($days = null, $update = false, $importing = false)
+    public function importOrders($days = null, $update = false, $importing = false, $to = null)
     {
         if (!$days) {
             $days = self::DEFAULT_ORDERS_DOWNLOAD_DAYS;
         }
+
         $this->logger->info("Importing orders from $days days");
-        $fromDate = date('Y-m-d', strtotime("-$days days"));
+
+        $fromDate = $to ?
+            date('Y-m-d', strtotime("-$days days", strtotime($to))):
+            date('Y-m-d', strtotime("-$days days"));
 
         if (!empty($this->config['stores'])) {
             $stores = $this->config['stores'];
@@ -146,7 +150,7 @@ class SoapConnector
                 $this->setStore($store);
             }
 
-            foreach ($this->getOrders($fromDate, $importing) as $order) {
+            foreach ($this->getOrders($fromDate, $importing, $to) as $order) {
                 $this->woowup->upsertCustomer($order['customer']);
                 $this->woowup->upsertOrder($order, $update);
             }
