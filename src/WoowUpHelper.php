@@ -2,6 +2,8 @@
 
 namespace MagentoWoowUpConnector;
 
+use Exception;
+
 class WoowUpHelper
 {
 
@@ -48,17 +50,10 @@ class WoowUpHelper
                         $this->_logger->info("[Purchase] {$order['invoice_number']} Error: customer not found");
                         $this->_woowupStats['orders']['failed'][] = $order;
                         return false;
-                        break;
                     case 'duplicated_purchase_number':
                         $this->_logger->info("[Purchase] {$order['invoice_number']} Duplicated");
                         $this->_woowupStats['orders']['duplicated']++;
-                        if ($update) {
-                            $this->_woowupClient->purchases->update($order);
-                            $this->_logger->info("[Purchase] {$order['invoice_number']} Updated Successfully");
-                            $this->_woowupStats['orders']['updated']++;
-                        }
-                        return true;
-                        break;
+                        return $this->updateOrder($update, $order);
                     default:
                         $errorCode    = $response['code'];
                         if (isset($response['payload']['errors']) && isset($response['payload']['errors'][0])) {
@@ -209,5 +204,31 @@ class WoowUpHelper
 
             $page++;
         } while (!empty($products));
+    }
+
+    private function updateOrder($update, $order)
+    {
+        $invoice_number = $order['invoice_number'] ?? 'UNKNOWN_INVOICE_NUMBER';
+        try {
+            if ($update) {
+                $this->_woowupClient->purchases->update($order);
+                $this->_logger->info("[Purchase] $invoice_number Updated Successfully");
+                $this->_woowupStats['orders']['updated']++;
+            }
+        } catch (Exception $e) {
+            if (!method_exists($e, 'getResponse')) {
+                return false;
+            }
+
+            $response = json_decode($e->getResponse()->getBody(), true);
+            if ($response['code'] === 'user_not_found') {
+                $this->_logger->info("[Purchase] $invoice_number is already associated with another Customer. Skipping Order...");
+                return true;
+            }
+
+            $this->_logger->info("[Purchase] $invoice_number Error: Code '" . $e->getCode() . "', Message '" . $e->getMessage() . "'");
+            return false;
+        }
+        return true;
     }
 }
