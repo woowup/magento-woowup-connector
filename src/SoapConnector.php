@@ -1179,6 +1179,12 @@ class SoapConnector
             if (method_exists($filter, 'getUrl')) {
                 $url = $filter->getUrl($productInfo);
             }
+            if (method_exists($filter, 'buildUrlWithCategories')) {
+                if(empty($this->categories)) {
+                    $this->categories = $this->getCategories();
+                }
+                $url = $filter->buildUrlWithCategories($productInfo, $this->categories);
+            }
         }
 
         return $url;
