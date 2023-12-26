@@ -1113,6 +1113,12 @@ class SoapConnector
             if (is_null($imageUrl)) {
                 $imageUrl = $minPosition->url;
             }
+
+            foreach ($this->filters as $filter) {
+                if(method_exists($filter, 'buildImageUrl')) {
+                    $imageUrl = $filter->buildImageUrl($productInfo, $mediaInfo);
+                }
+            }
         }
 
         return $imageUrl;
