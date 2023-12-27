@@ -1113,6 +1113,12 @@ class SoapConnector
             if (is_null($imageUrl)) {
                 $imageUrl = $minPosition->url;
             }
+
+            foreach ($this->filters as $filter) {
+                if(method_exists($filter, 'buildImageUrl')) {
+                    $imageUrl = $filter->buildImageUrl($productInfo, $mediaInfo);
+                }
+            }
         }
 
         return $imageUrl;
@@ -1178,6 +1184,12 @@ class SoapConnector
             }
             if (method_exists($filter, 'getUrl')) {
                 $url = $filter->getUrl($productInfo);
+            }
+            if (method_exists($filter, 'buildUrlWithCategories')) {
+                if(empty($this->categories)) {
+                    $this->categories = $this->getCategories();
+                }
+                $url = $filter->buildUrlWithCategories($productInfo, $this->categories);
             }
         }
 
